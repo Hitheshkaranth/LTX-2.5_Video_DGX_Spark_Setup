@@ -8,7 +8,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": true,
   "refresh": "5s",
   "time": {
@@ -38,7 +38,7 @@
     {
       "type": "stat",
       "title": "LTX status",
-      "description": "",
+      "description": "Running jobs. The web UI can run several in parallel (LTX_WORKERS).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -88,6 +88,14 @@
                 "1": {
                   "text": "Generating",
                   "color": "green"
+                },
+                "2": {
+                  "text": "2 jobs",
+                  "color": "green"
+                },
+                "3": {
+                  "text": "3 jobs",
+                  "color": "green"
                 }
               }
             }
@@ -111,7 +119,7 @@
     {
       "type": "stat",
       "title": "Stage",
-      "description": "Pipeline stage of the running job.",
+      "description": "Pipeline stage of each running job.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -129,7 +137,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (stage) (ltx_job_stage) == 1",
+          "expr": "max by (stage) (ltx_job_stage) > 0",
           "legendFormat": "{{stage}}",
           "refId": "A",
           "instant": true,
@@ -1552,7 +1560,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "max by (user, source) (ltx_job_running_source{source!=\"none\"}) == 1",
+          "expr": "max by (user, source) (ltx_job_running_source{source!=\"none\"}) > 0",
           "legendFormat": "{{user}} ({{source}})",
           "refId": "A",
           "instant": true,

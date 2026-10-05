@@ -29,7 +29,8 @@ ROOT = Path(os.environ.get("LTX_ROOT", Path(__file__).resolve().parent.parent))
 RUN_SCRIPT = os.environ.get("LTX_RUN_SCRIPT", str(Path(__file__).resolve().parent.parent / "run.sh"))
 OUTPUTS = ROOT / "outputs"
 UPLOADS = ROOT / "uploads"  # conditioning images for image-to-video
-CURRENT = ROOT / "logs" / "current.json"
+RUNNING_DIR = ROOT / "logs" / "running"  # ltx_job.py: one <job_id>.json per in-flight job
+LEGACY_CURRENT = ROOT / "logs" / "current.json"  # older ltx_job.py versions
 WEBUI_STATE = ROOT / "logs" / "webui_state.json"  # read by ltx_exporter.py for Grafana
 HISTORY = ROOT / "logs" / "jobs.jsonl"
 INDEX = Path(__file__).resolve().parent / "index.html"
@@ -51,6 +52,10 @@ FRAMES = {49, 97, 121, 193}  # 2s, 4s, 5s, 8s at 24 fps (must be 8k+1)
 # Observed peak ~29 GiB above idle; keep headroom. Override with LTX_MIN_FREE_GIB.
 MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "40")) * 2**30
 MAX_QUEUE = 10
+# Parallel jobs. They share one GPU, so each runs slower; overlap mainly hides model loading.
+WORKERS = max(1, int(os.environ.get("LTX_WORKERS", "1")))
+# Expected peak unified memory per job; reserved for running jobs that haven't allocated it yet.
+JOB_PEAK_BYTES = int(float(os.environ.get("LTX_JOB_PEAK_GIB", "30")) * 2**30)
 
 lock = threading.Lock()
 wake = threading.Condition(lock)
@@ -77,18 +82,37 @@ def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower())[:40].strip("-") or "clip"
 
 
+def effective_free():
+    """MemAvailable minus memory that running jobs will still allocate (they ramp up over ~20 s).
+
+    A web job marked running may not have written its state file yet (the pipeline process is
+    still starting), so it is reserved at the full expected peak. Called with `lock` held.
+    """
+    states = running_states()
+    pending = sum(max(0, JOB_PEAK_BYTES - st.get("gpu_mem_bytes", 0)) for st in states)
+    seen = {Path(st.get("output", "")).name for st in states}
+    pending += JOB_PEAK_BYTES * sum(j["status"] == "running" and j["file"] not in seen for j in jobs)
+    return mem_available() - pending
+
+
 def worker():
     while True:
         with lock:
             while not any(j["status"] == "queued" for j in jobs):
                 wake.wait()
             job = next(j for j in jobs if j["status"] == "queued")
-            free = mem_available()
+            free = effective_free()
             if free < MIN_FREE_BYTES:
+                if any(j["status"] == "running" for j in jobs):
+                    # Another job holds the memory: wait for it instead of failing this one.
+                    job["waiting"] = "memory"
+                    wake.wait(timeout=5)
+                    continue
                 job.update(status="failed", finished=time.time(),
-                           error=f"Not enough free memory ({free / 2**30:.0f} GiB free, need "
+                           error=f"Not enough free memory ({mem_available() / 2**30:.0f} GiB free, need "
                                  f"{MIN_FREE_BYTES // 2**30}). Is an LLM server ({LLM_CONTAINER}) running?")
                 continue
+            job.pop("waiting", None)
             job.update(status="running", started=time.time())
         w, h = job["size"].split("x")
         cmd = [RUN_SCRIPT, job["prompt"], str(OUTPUTS / job["file"]),
@@ -109,6 +133,7 @@ def worker():
             if not ok:
                 tail = log.read_text(errors="replace").strip().splitlines()[-3:]
                 job["error"] = f"exit {rc}: " + " | ".join(tail)[-400:]
+            wake.notify_all()  # memory freed: let waiting workers re-check
 
 
 def publish_state():
@@ -126,15 +151,32 @@ def publish_state():
         time.sleep(2)
 
 
+def running_states():
+    """Live state of every in-flight job (any entry point), oldest first."""
+    states = []
+    for f in RUNNING_DIR.glob("*.json"):
+        try:
+            st = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if st.get("running") and Path(f"/proc/{st.get('pid')}").exists():
+            states.append(st)
+    if not states:
+        try:
+            st = json.loads(LEGACY_CURRENT.read_text())
+            if st.get("running") and Path(f"/proc/{st.get('pid')}").exists():
+                states.append(st)
+        except (OSError, ValueError):
+            pass
+    return sorted(states, key=lambda st: st.get("start", 0))
+
+
 def live_progress():
-    try:
-        cur = json.loads(CURRENT.read_text())
-    except (OSError, ValueError):
-        return None
-    if not cur.get("running") or not Path(f"/proc/{cur.get('pid')}").exists():
-        return None
-    return {k: cur.get(k) for k in ("stage", "step", "steps", "output")} | {
-        "elapsed": round(time.time() - cur["start"], 1), "gpu_mem_gib": round(cur.get("gpu_mem_bytes", 0) / 2**30, 1)}
+    """Per running job: stage/progress for the activity rail, keyed by output file name."""
+    now = time.time()
+    return [{k: st.get(k) for k in ("stage", "step", "steps", "prompt", "user", "source", "mode", "width", "height", "frames")}
+            | {"file": Path(st.get("output", "")).name, "elapsed": round(now - st["start"], 1),
+               "gpu_mem_gib": round(st.get("gpu_mem_bytes", 0) / 2**30, 1)} for st in running_states()]
 
 
 def history_by_file():
@@ -171,17 +213,6 @@ def recent_history(n=15):
                      "width": r.get("width"), "height": r.get("height"), "frames": r.get("frames"),
                      "duration_s": r.get("duration_s"), "end": r.get("end")})
     return rows
-
-
-def live_job():
-    """The running job as ltx_job.py sees it (covers CLI runs the web queue doesn't know about)."""
-    try:
-        cur = json.loads(CURRENT.read_text())
-    except (OSError, ValueError):
-        return None
-    if not cur.get("running") or not Path(f"/proc/{cur.get('pid')}").exists():
-        return None
-    return {k: cur.get(k) for k in ("prompt", "user", "source", "mode", "width", "height", "frames", "start")}
 
 
 def list_videos():
@@ -233,10 +264,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with lock:
                 q = [dict(j) for j in jobs[-30:]]
             free = mem_available()
-            self.send_json({"jobs": q[::-1], "live": live_progress(), "mem_free_gib": round(free / 2**30, 1),
-                            "can_run": free >= MIN_FREE_BYTES, "llm_running": llm_running(), "llm_container": LLM_CONTAINER,
+            lives = live_progress()
+            self.send_json({"jobs": q[::-1], "lives": lives, "live": lives[0] if lives else None,
+                            "workers": WORKERS, "mem_free_gib": round(free / 2**30, 1),
+                            "can_run": free >= MIN_FREE_BYTES or bool(lives),  # with jobs running, new ones queue and wait "llm_running": llm_running(), "llm_container": LLM_CONTAINER,
                             "min_free_gib": MIN_FREE_BYTES // 2**30, "user": self.user(),
-                            "now": time.time(), "live_job": live_job(), "recent": recent_history()})
+                            "now": time.time(), "recent": recent_history()})
         elif path == "/api/videos":
             self.send_json(list_videos())
         elif path.startswith("/videos/"):
@@ -351,7 +384,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 if __name__ == "__main__":
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     (ROOT / "logs").mkdir(parents=True, exist_ok=True)
-    threading.Thread(target=worker, daemon=True).start()
+    for _ in range(WORKERS):
+        threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=publish_state, daemon=True).start()
     if TS_LISTEN:
         host, port = TS_LISTEN.rsplit(":", 1)

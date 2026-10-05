@@ -3,12 +3,14 @@
 
 Usage: ltx_job.py <output.mp4> -- <pipeline command...>
 
-While the job runs, logs/current.json is rewritten every second with the live
-stage, denoising progress and GPU memory of the pipeline process. When it ends,
-one JSON line is appended to logs/jobs.jsonl. ltx_exporter.py turns both into
-Prometheus metrics. Pipeline output is still streamed to the terminal and also
-saved to logs/jobs/<job_id>.log.
+While the job runs, logs/running/<job_id>.json is rewritten every second with the
+live stage, denoising progress and GPU memory of the pipeline process; several
+jobs can run at once, each with its own file. When a job ends its file is removed
+and one JSON line is appended to logs/jobs.jsonl. ltx_exporter.py and the web UI
+read both. Pipeline output is still streamed to the terminal and also saved to
+logs/jobs/<job_id>.log.
 """
+import fcntl
 import json
 import os
 import re
@@ -20,7 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 LOGS = ROOT / "logs"
-CURRENT = LOGS / "current.json"
+RUNNING = LOGS / "running"  # one <job_id>.json per in-flight job
+LEGACY = LOGS / "current.json"  # single-job file read by older web UI / exporter versions
 HISTORY = LOGS / "jobs.jsonl"
 
 # Log line markers from ltx_pipelines.utils.blocks, in pipeline order.
@@ -58,7 +61,7 @@ def gpu_mem_bytes(pid):
 
 
 def write_json(path, obj):
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")  # per-process: parallel jobs share LEGACY
     tmp.write_text(json.dumps(obj))
     tmp.replace(path)
 
@@ -66,8 +69,11 @@ def write_json(path, obj):
 def main():
     sep = sys.argv.index("--")
     output, cmd = sys.argv[1], sys.argv[sep + 1:]
-    job_id = time.strftime("%Y%m%d-%H%M%S")
+    # pid suffix: parallel jobs can start in the same second
+    job_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
     (LOGS / "jobs").mkdir(parents=True, exist_ok=True)
+    RUNNING.mkdir(parents=True, exist_ok=True)
+    live_file = RUNNING / f"{job_id}.json"
     width, height = int(arg(cmd, "--width", 1536)), int(arg(cmd, "--height", 1024))
     frames, fps = int(arg(cmd, "--num-frames", 121)), float(arg(cmd, "--frame-rate", 24))
     state = {
@@ -86,7 +92,8 @@ def main():
 
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
     state["pid"] = proc.pid
-    write_json(CURRENT, state)
+    write_json(live_file, state)
+    write_json(LEGACY, state)
 
     def sample():
         while proc.poll() is None:
@@ -94,7 +101,9 @@ def main():
             with lock:
                 state["gpu_mem_bytes"] = mem
                 state["peak_gpu_mem_bytes"] = max(state["peak_gpu_mem_bytes"], mem)
-                write_json(CURRENT, state)
+                if state["running"]:
+                    write_json(live_file, state)
+                    write_json(LEGACY, state)
             time.sleep(1)
 
     threading.Thread(target=sample, daemon=True).start()
@@ -132,9 +141,12 @@ def main():
             "image": state["image"], "mode": state["mode"],
         }
         with open(HISTORY, "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)  # parallel jobs append to the same history
             f.write(json.dumps(record) + "\n")
-        state.update(running=0, stage="done" if ok else "failed", gpu_mem_bytes=0)
-        write_json(CURRENT, state)
+        state["running"] = 0
+        live_file.unlink(missing_ok=True)
+        if not any(RUNNING.glob("*.json")):
+            write_json(LEGACY, state)
     sys.exit(rc)
 
 

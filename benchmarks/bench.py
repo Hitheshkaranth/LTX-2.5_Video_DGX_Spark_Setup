@@ -3,7 +3,8 @@
 
 Jobs go through the web UI queue (webui/server.py) so they never overlap with other users' jobs;
 timings and peak GPU memory are read back from logs/jobs.jsonl as recorded by ltx_job.py.
-Writes benchmarks/results.json. Run on an otherwise idle box (no LLM server holding memory).
+Writes benchmarks/results.json. Run on an otherwise idle box (no LLM server holding memory) with the
+studio at LTX_WORKERS=1; with parallel workers the timed jobs would overlap each other.
 """
 import json
 import time

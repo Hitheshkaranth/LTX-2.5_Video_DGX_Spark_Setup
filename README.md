@@ -55,9 +55,9 @@ GIF previews are downscaled and silent).
 
 ### Screenshots
 
-| LTX Video Studio: prompt, live progress, queue, gallery | Grafana: every job's stage, memory, GPU and history |
+| LTX Video Studio: two clips rendering in parallel, image attached | Grafana: every job's stage, memory, GPU and history |
 |:---:|:---:|
-| <a href="assets/webui.png"><img src="assets/webui.png" alt="LTX Video Studio web UI" width="100%"></a> | <a href="assets/grafana.png"><img src="assets/grafana.png" alt="LTX-2.5 Grafana dashboard" width="100%"></a> |
+| <a href="assets/studio.png"><img src="assets/studio.png" alt="LTX Video Studio" width="100%"></a> | <a href="assets/grafana.png"><img src="assets/grafana.png" alt="LTX-2.5 Grafana dashboard" width="100%"></a> |
 
 ## Table of Contents
 
@@ -263,7 +263,7 @@ expected when both operands are quantized to 4 bits.
 ## LTX Video Studio (Web UI)
 
 <div align="center">
-<img src="assets/webui.png" alt="LTX Video Studio" width="90%">
+<img src="assets/studio.png" alt="LTX Video Studio: gallery, activity rail with two parallel renders, composer with an image attached" width="100%">
 </div>
 
 A dark, cinematic studio served by a standard-library Python app (`webui/server.py`,
@@ -284,11 +284,64 @@ A dark, cinematic studio served by a standard-library Python app (`webui/server.
 - **Gallery:** a masonry feed that plays on hover, filtered by *All / Text → video / Image → video*,
   with the source-image thumbnail on clips made from images. Click a clip for a full-screen viewer with
   the prompt, render stats, **Reuse prompt**, **Animate this image again** and download.
-- **Queue:** one job at a time, up to 10 waiting, in order. Benchmarks go through it too, so nothing overlaps.
+- **Queue:** up to 10 waiting, started in order by 1 worker (or more; see [Parallel generation](#parallel-generation)).
 - **Memory gate:** refuses to start a job with less than 40 GiB free (`LTX_MIN_FREE_GIB`) and tells
   you if the LLM container is the reason, instead of letting the box swap.
 - **Who asked:** behind `tailscale serve`, each job is tagged with the requester's Tailscale login
   (`Tailscale-User-Login`). On the optional direct listener it uses `tailscale whois` instead.
+
+### How to use the studio
+
+1. **Open it.** On the Spark go to `http://127.0.0.1:8090`. From another device on your tailnet use
+   `https://<host>.<tailnet>.ts.net/` (see the URL table below). The pill in the top-right corner
+   should say **Ready**. If it says *Busy*, an LLM server is holding the memory; see
+   [Sharing the Box](#sharing-the-box-with-an-llm).
+2. **Describe the shot** in the bar at the bottom: subject, action, setting, light, camera move *and*
+   sound. Example: *"A red fox trots through fresh snow in a birch forest at golden hour, soft wind,
+   slow tracking shot"*.
+3. **Optional: start from an image.** Click the picture button, drag a photo onto the page or paste
+   one (PNG, JPEG or WebP, up to 16 MB). The photo becomes the first frame; describe how it should
+   *move*. Shape switches to **Match image** so nothing gets cropped. Lower **Image strength** if you
+   want the model to drift further from the photo.
+4. **Pick the settings:**
+   - **Shape:** Landscape, Portrait, Square, or Match image.
+   - **Quality:** Fast (~768 px, about a minute for 4 s), HD (~1280 px) or Max (~1536 px, about
+     3 min for 4 s).
+   - **Length:** 2, 4, 5 or 8 s.
+   - **Seed** (optional): reuse a seed with the same settings to reproduce a clip exactly.
+5. **Generate** (or **Ctrl/⌘ + Enter**). The job appears in the Activity rail on the right:
+   - **Now rendering** steps through *Prompt → Pass 1 → Upscale → Pass 2 → Render* with elapsed time
+     and an ETA. With parallel workers you'll see one card per running job.
+   - **Up next** lists queued jobs in order with an estimated start time. *Waiting for memory* means
+     the job starts as soon as a running one frees enough.
+   - **Finished** lists recent results (from the studio and the command line), with render time or the
+     reason a job failed.
+6. **Watch and reuse.** Finished clips appear in the gallery and play on hover. Click one (or a row
+   in *Finished*) to open the viewer with sound, then **Download MP4**, **Reuse prompt** to iterate,
+   or **Animate this image again** for image-to-video clips. Use the tabs to filter text-to-video and
+   image-to-video clips.
+
+Tip: iterate at **Fast · 4 s** (about a minute per try), then re-render the prompt and seed you like at
+HD or Max.
+
+### Parallel generation
+
+The studio can render several jobs at once: set `LTX_WORKERS` (default `1`), e.g.
+`LTX_WORKERS=2 ./setup-services.sh`. Each job peaks at ~23 GiB for the LTX process (~29 GiB
+system-wide), so two or three fit when nothing else holds the memory.
+
+- **Memory-safe start:** before starting a job, the studio subtracts the memory that already-running
+  jobs haven't allocated yet (`LTX_JOB_PEAK_GIB`, default 30). A just-started job counts at its full
+  peak, so two workers can't both see "plenty free" at the same moment and overshoot. If there isn't
+  room, the job waits in the queue instead of failing.
+- **What to expect:** all jobs share one GPU, and the denoising passes already keep it busy. Parallel
+  jobs therefore each run slower; the gain comes from overlapping one job's model loading and text
+  encoding with another's GPU work. This hasn't been benchmarked on the Spark yet, so measure your own
+  mix before relying on it.
+- Each running job writes its own `logs/running/<job_id>.json`, so the CLI, the studio and Grafana all
+  see every parallel job.
+
+### Publishing to your tailnet
 
 It binds to `127.0.0.1` only. `setup-services.sh --tailnet` publishes it at:
 
@@ -312,7 +365,7 @@ GPU memory from `nvidia-smi`), and when the run ends it appends a record to `log
 
 | Metric | Meaning |
 |---|---|
-| `ltx_job_running`, `ltx_job_stage{stage}` | Is a job running, and which stage (text encoder, pass 1, upsample, pass 2, decode) |
+| `ltx_job_running`, `ltx_job_stage{stage}` | How many jobs are running (parallel workers), and how many are in each stage |
 | `ltx_job_step` / `ltx_job_steps` | Denoising progress in the current pass |
 | `ltx_job_gpu_memory_bytes` | Live unified-memory allocation of the LTX process |
 | `ltx_jobs_total{status}`, `ltx_jobs_by_user_total{user,source,status}` | Finished jobs, by requester and entry point (`cli` / `webui`) |
@@ -375,7 +428,8 @@ first run): this is the real time from pressing *Generate* to having an MP4.
 - **Memory is flat at ~22.5–23.3 GiB** across every size and length tested. Stages load and free their models one at a time, so the model weights set the peak, not the video size. Even 1536×1024 fits easily.
 - **For quick iteration**, use 768×512 at 4–5 s (about a minute), then re-render the prompt you like at a higher resolution.
 
-Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks/make_charts.py`.
+Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks/make_charts.py`
+(with the studio at `LTX_WORKERS=1`, the setting these numbers were measured with).
 
 ## Repository Layout
 

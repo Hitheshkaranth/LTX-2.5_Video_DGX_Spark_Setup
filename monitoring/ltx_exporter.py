@@ -2,8 +2,8 @@
 """Prometheus exporter for LTX-2.5 video generation jobs.
 
 LTX runs as a one-shot CLI with no metrics endpoint, so run.sh goes through
-ltx_job.py, which keeps logs/current.json (live job) and appends
-logs/jobs.jsonl (finished jobs). This re-exposes both as Prometheus gauges for
+ltx_job.py, which keeps logs/running/<job_id>.json per in-flight job (several can
+run in parallel) and appends logs/jobs.jsonl (finished jobs). This re-exposes both as Prometheus gauges for
 the "LTX-2.5 Video Generation" Grafana dashboard.
 """
 import http.server
@@ -17,15 +17,24 @@ LISTEN_PORT = int(os.environ.get("EXPORTER_PORT", "9092"))
 STAGES = ["starting", "text_encoder", "denoise_stage1", "upsample", "denoise_stage2", "decode"]
 
 
-def load_current():
-    try:
-        cur = json.loads((LTX_LOGS / "current.json").read_text())
-    except (OSError, ValueError):
-        return None
-    # A killed job never gets to clear running=1; trust the pid instead.
-    if cur.get("running") and not Path(f"/proc/{cur.get('pid')}").exists():
-        cur["running"] = 0
-    return cur
+def load_running():
+    """In-flight jobs, oldest first. A killed job never removes its file, so trust the pid."""
+    jobs = []
+    for f in (LTX_LOGS / "running").glob("*.json"):
+        try:
+            j = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if j.get("running") and Path(f"/proc/{j.get('pid')}").exists():
+            jobs.append(j)
+    if not jobs:  # job started by an older ltx_job.py that only wrote current.json
+        try:
+            j = json.loads((LTX_LOGS / "current.json").read_text())
+            if j.get("running") and Path(f"/proc/{j.get('pid')}").exists():
+                jobs.append(j)
+        except (OSError, ValueError):
+            pass
+    return sorted(jobs, key=lambda j: j.get("start", 0))
 
 
 def load_webui():
@@ -50,8 +59,9 @@ def load_history():
 
 
 def render_metrics():
-    cur, jobs = load_current(), load_history()
-    running = bool(cur and cur.get("running"))
+    live, jobs = load_running(), load_history()
+    running = bool(live)
+    cur = live[0] if live else {}  # oldest running job drives the single-value panels
     out = []
 
     def metric(name, help_, value, labels=None, kind="gauge"):
@@ -62,17 +72,17 @@ def render_metrics():
         lbl = "{" + ",".join(f'{k}="{esc(v)}"' for k, v in labels.items()) + "}" if labels else ""
         out.append(f"{name}{lbl} {value}")
 
-    metric("ltx_job_running", "1 while an LTX generation job is running.", int(running))
+    metric("ltx_job_running", "Number of LTX jobs running right now (parallel workers).", len(live))
     for s in STAGES:
-        metric("ltx_job_stage", "1 for the pipeline stage the running job is in.",
-               int(running and cur.get("stage") == s), {"stage": s})
+        metric("ltx_job_stage", "Running jobs currently in each pipeline stage.",
+               sum(j.get("stage") == s for j in live), {"stage": s})
     steps = cur.get("steps", 0) if running else 0
     metric("ltx_job_step", "Current denoising step of the running job.", cur.get("step", 0) if running else 0)
     metric("ltx_job_steps", "Denoising steps in the current stage.", steps)
-    metric("ltx_job_elapsed_seconds", "Wall time of the running job.",
+    metric("ltx_job_elapsed_seconds", "Wall time of the oldest running job.",
            round(time.time() - cur["start"], 1) if running else 0)
-    metric("ltx_job_gpu_memory_bytes", "Unified GPU memory held by the running LTX process.",
-           cur.get("gpu_mem_bytes", 0) if running else 0)
+    metric("ltx_job_gpu_memory_bytes", "Unified GPU memory held by all running LTX processes.",
+           sum(j.get("gpu_mem_bytes", 0) for j in live))
     metric("ltx_job_pixels", "Output width*height of the running job.",
            cur["width"] * cur["height"] if running else 0)
     metric("ltx_job_frames", "Output frame count of the running job.", cur["frames"] if running else 0)
@@ -102,11 +112,14 @@ def render_metrics():
             metric("ltx_jobs_by_mode_total", "Finished jobs by mode: t2v (text-to-video) or i2v (image-to-video).",
                    by_mode.get((mode, status), 0), {"mode": mode, "status": status}, "counter")
     for mode in ("t2v", "i2v"):
-        metric("ltx_job_mode", "1 for the mode of the running job.",
-               int(running and cur.get("mode", "t2v") == mode), {"mode": mode})
-    metric("ltx_job_running_source", "1 for the entry point (cli/webui) of the running job.",
-           1 if running else 0, {"source": cur.get("source", "cli") if running else "none",
-                                 "user": cur.get("user", "") if running else ""})
+        metric("ltx_job_mode", "Running jobs by mode.", sum(j.get("mode", "t2v") == mode for j in live), {"mode": mode})
+    who = {}
+    for j in live:
+        k = (j.get("source", "cli"), j.get("user", ""))
+        who[k] = who.get(k, 0) + 1
+    for (source, user), n in sorted(who.items()) or [(("none", ""), 0)]:
+        metric("ltx_job_running_source", "Running jobs by entry point (cli/webui) and requester.",
+               n, {"source": source, "user": user})
 
     web = load_webui()
     up = bool(web) and time.time() - web.get("heartbeat", 0) < 30

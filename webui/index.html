@@ -116,6 +116,7 @@
   .now.on { border-color: rgba(200,255,46,.35); box-shadow: 0 0 0 1px rgba(200,255,46,.08), 0 20px 50px -25px rgba(200,255,46,.35); }
   .now .idle { color: var(--dim); font-size: 14px; padding: 6px 0 2px; }
   .nowtop { display: flex; gap: 12px; align-items: flex-start; }
+  .nowitem + .nowitem { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
   .thumb { flex: none; width: 64px; height: 44px; border-radius: 9px; object-fit: cover; background: #0b0c10; border: 1px solid var(--line2);
            display: grid; place-items: center; color: var(--dim); font: 600 10px/1 var(--font); overflow: hidden; }
   .thumb.sm { width: 48px; height: 34px; border-radius: 7px; }
@@ -275,7 +276,7 @@
   <div id="feed" class="feed"><div class="empty">Loading…</div></div>
   </div>
   <aside class="rail" aria-label="Activity">
-    <section class="box now" id="nowBox"><h3>Now rendering</h3><div id="now"><div class="idle">Nothing rendering.</div></div></section>
+    <section class="box now" id="nowBox"><h3 id="nowTitle">Now rendering</h3><div id="now"><div class="idle">Nothing rendering.</div></div></section>
     <section class="box"><h3>Up next <span class="n" id="qn">0</span></h3><ul class="list" id="queue"></ul></section>
     <section class="box"><h3>Finished <span class="n" id="dn">0</span></h3><ul class="list" id="done"></ul></section>
   </aside>
@@ -439,49 +440,61 @@ function typical(w, h, frames, recent) {
   return 35 + 0.9e-6 * w * h * frames;
 }
 
-function renderActivity(s) {
-  s.recent = s.recent || [];  // older servers don't send history; degrade instead of breaking the page
-  const now = s.now || Date.now() / 1000, live = s.live, lj = s.live_job;
-  const webRun = s.jobs.find((j) => j.status === "running");
-  // ── now rendering ──
-  let remaining = 0;
-  if (live || webRun) {
-    const [w, h] = webRun ? webRun.size.split("x").map(Number) : [lj?.width, lj?.height];
-    const frames = webRun ? webRun.frames : lj?.frames;
-    const prompt = webRun ? webRun.prompt : lj?.prompt;
-    const mode = webRun ? webRun.mode : lj?.mode;
-    const src = webRun ? "webui" : (lj?.source || "cli");
-    const user = webRun ? webRun.user : lj?.user;
-    const ci = live ? STEPS.findIndex(([k]) => k === live.stage) : -1;
-    const frac = live && live.steps ? live.step / live.steps : 0;
-    const elapsed = live ? live.elapsed : 0;
-    const est = typical(w, h, frames, s.recent);
-    remaining = Math.max(5, est - elapsed);
-    $("nowBox").classList.add("on");
-    $("now").innerHTML = `
-      <div class="nowtop">${thumbHtml(webRun?.image)}<div style="min-width:0">
-        <p>${esc(prompt || "…")}</p>
-        <div class="tags">${mode === "i2v" ? '<span class="tag i2v">IMG→VID</span>' : ""}<span class="tag">${w}×${h}</span><span class="tag">${(frames - 1) / 24}s</span>
-          <span class="tag ${src === "cli" ? "cli" : ""}">${src === "cli" ? "command line" : esc(who(user))}</span></div></div></div>
+function nowItem(e, recent) {
+  const ci = e.live ? STEPS.findIndex(([k]) => k === e.live.stage) : -1;
+  const frac = e.live && e.live.steps ? e.live.step / e.live.steps : 0;
+  const elapsed = e.live ? e.live.elapsed : 0;
+  const remaining = Math.max(5, typical(e.w, e.h, e.frames, recent) - elapsed);
+  return {remaining, html: `
+    <div class="nowitem">
+      <div class="nowtop">${thumbHtml(e.image)}<div style="min-width:0">
+        <p>${esc(e.prompt || "…")}</p>
+        <div class="tags">${e.mode === "i2v" ? '<span class="tag i2v">IMG→VID</span>' : ""}<span class="tag">${e.w}×${e.h}</span><span class="tag">${(e.frames - 1) / 24}s</span>
+          <span class="tag ${e.src === "cli" ? "cli" : ""}">${e.src === "cli" ? "command line" : esc(who(e.user))}</span></div></div></div>
       <div class="steps">${STEPS.map(([k, label], i) => {
         const cls = i < ci ? "done" : i === ci ? "cur" : "";
         const fill = i < ci ? 100 : i === ci ? (k.startsWith("denoise") ? Math.round(frac * 100) : 50) : 0;
         return `<div class="step ${cls}"><i><b style="width:${fill}%"></b></i>${label}</div>`; }).join("")}</div>
-      <div class="nowfoot"><span>${live ? esc(STAGE[live.stage] || live.stage) : "Starting"}${live && live.steps ? ` · step ${live.step}/${live.steps}` : ""}</span>
-        <span><b>${fmtS(elapsed)}</b> elapsed · ~${fmtS(remaining)} left</span></div>`;
-  } else {
-    $("nowBox").classList.remove("on");
-    $("now").innerHTML = `<div class="idle">Nothing rendering. ${s.can_run ? "Ready for your next clip." : "Waiting for free memory."}</div>`;
+      <div class="nowfoot"><span>${e.live ? esc(STAGE[e.live.stage] || e.live.stage) : "Starting"}${e.live && e.live.steps ? ` · step ${e.live.step}/${e.live.steps}` : ""}</span>
+        <span><b>${fmtS(elapsed)}</b> elapsed · ~${fmtS(remaining)} left</span></div>
+    </div>`};
+}
+
+function renderActivity(s) {
+  s.recent = s.recent || [];  // older servers don't send history; degrade instead of breaking the page
+  const now = s.now || Date.now() / 1000;
+  const lives = s.lives || (s.live ? [s.live] : []);
+  const workers = s.workers || 1;
+  // ── now rendering: every live job (web or CLI), plus web jobs that just started ──
+  const webRunning = s.jobs.filter((j) => j.status === "running");
+  // older servers send one `live` without a file name: it belongs to the running web job, if any
+  if (!s.lives && s.live && !s.live.file && webRunning[0]) s.live.file = webRunning[0].file;
+  const items = lives.map((l) => {
+    const j = webRunning.find((x) => x.file === l.file);
+    const [w, h] = j ? j.size.split("x").map(Number) : [l.width, l.height];
+    return {live: l, w, h, frames: j ? j.frames : l.frames, prompt: j ? j.prompt : l.prompt, mode: j ? j.mode : l.mode,
+            image: j?.image, src: j ? "webui" : (l.source || "cli"), user: j ? j.user : l.user};
+  });
+  for (const j of webRunning) if (!lives.some((l) => l.file === j.file)) {
+    const [w, h] = j.size.split("x").map(Number);
+    items.push({live: null, w, h, frames: j.frames, prompt: j.prompt, mode: j.mode, image: j.image, src: "webui", user: j.user});
   }
+  const rendered = items.map((e) => nowItem(e, s.recent));
+  const slots = rendered.map((r) => r.remaining);  // time until each busy worker frees up
+  $("nowTitle").textContent = items.length > 1 ? `Now rendering · ${items.length} in parallel` : "Now rendering";
+  $("nowBox").classList.toggle("on", items.length > 0);
+  $("now").innerHTML = items.length ? rendered.map((r) => r.html).join("")
+    : `<div class="idle">Nothing rendering. ${s.can_run ? "Ready for your next clip." : "Waiting for free memory."}</div>`;
   // ── up next ──
   const queued = s.jobs.filter((j) => j.status === "queued").sort((a, b) => a.queued - b.queued);
   $("qn").textContent = queued.length;
-  let wait = remaining;
+  while (slots.length < workers) slots.push(0);
   $("queue").innerHTML = queued.length ? queued.map((j, i) => {
     const [w, h] = j.size.split("x").map(Number);
-    const startIn = wait; wait += typical(w, h, j.frames, s.recent);
+    const k = slots.indexOf(Math.min(...slots));
+    const startIn = slots[k]; slots[k] += typical(w, h, j.frames, s.recent);
     return `<li><span class="pos">${i + 1}</span>${thumbHtml(j.image, "sm")}<div class="body"><div class="t">${esc(j.prompt)}</div>
-      <div class="s">${j.mode === "i2v" ? "image → video · " : ""}${w}×${h} · ${(j.frames - 1) / 24}s · ${esc(who(j.user))} · starts in ~${fmtS(startIn)}</div></div></li>`;
+      <div class="s">${j.mode === "i2v" ? "image → video · " : ""}${w}×${h} · ${(j.frames - 1) / 24}s · ${esc(who(j.user))} · ${j.waiting === "memory" ? "waiting for memory" : startIn < 1 ? "starting now" : `starts in ~${fmtS(startIn)}`}</div></div></li>`;
   }).join("") : '<li class="empty2">Queue is empty.</li>';
   // ── finished: this session's failures (with reasons) + job history ──
   const fails = s.jobs.filter((j) => j.status === "failed").map((j) => ({status: "failed", prompt: j.prompt, error: j.error, end: j.finished,
@@ -567,13 +580,16 @@ async function refresh() {
     const s = await (await fetch("api/status")).json();
     $("who").textContent = s.user;
     $("who").title = "Signed in via Tailscale";
-    const running = s.jobs.some((j) => j.status === "running") || !!s.live;
+    const running = s.jobs.some((j) => j.status === "running") || !!(s.lives || []).length || !!s.live;
     const dot = $("stateDot"), txt = $("stateText");
     if (!s.can_run) {
       dot.className = "dot bad";
       txt.textContent = s.llm_running ? `Busy: the LLM (${s.llm_container}) is using the memory` : `Low memory: ${s.mem_free_gib} GiB free`;
       $("state").title = `Needs ${s.min_free_gib} GiB free to start a job.`;
-    } else if (running) { dot.className = "dot busy"; txt.textContent = "Rendering"; $("state").title = ""; }
+    } else if (running) {
+      const n = Math.max((s.lives || []).length, s.jobs.filter((j) => j.status === "running").length, 1);
+      dot.className = "dot busy"; txt.textContent = n > 1 ? `Rendering ${n} in parallel` : "Rendering"; $("state").title = "";
+    }
     else { dot.className = "dot ok"; txt.textContent = `Ready · ${Math.round(s.mem_free_gib)} GiB free`; $("state").title = ""; }
     $("go").disabled = !s.can_run;
     $("go").title = s.can_run ? "" : "The machine doesn't have enough free memory right now.";

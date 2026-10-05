@@ -83,10 +83,13 @@ panels.append(row("Now", y)); y += 1
 panels += [
     stat("LTX status", [("ltx_job_running", "")], 0, y,
          mappings=[{"type": "value", "options": {"0": {"text": "Idle", "color": "text"},
-                                                 "1": {"text": "Generating", "color": "green"}}}]),
-    stat("Stage", [('max by (stage) (ltx_job_stage) == 1', "{{stage}}")], 4, y, w=5,
+                                                 "1": {"text": "Generating", "color": "green"},
+                                                 "2": {"text": "2 jobs", "color": "green"},
+                                                 "3": {"text": "3 jobs", "color": "green"}}}],
+         desc="Running jobs. The web UI can run several in parallel (LTX_WORKERS)."),
+    stat("Stage", [('max by (stage) (ltx_job_stage) > 0', "{{stage}}")], 4, y, w=5,
          steps=[{"color": "purple", "value": None}],
-         desc="Pipeline stage of the running job.", no_value="Idle", instant=True),
+         desc="Pipeline stage of each running job.", no_value="Idle", instant=True),
     stat("Denoise progress", [("100 * ltx_job_step / clamp_min(ltx_job_steps, 1)", "")], 9, y, w=3,
          unit="percent", decimals=0, desc="Steps done in the current denoising stage (8 steps, then 3)."),
     stat("Elapsed", [("ltx_job_elapsed_seconds", "")], 12, y, w=3, unit="s"),
@@ -150,7 +153,7 @@ panels += [
          desc="LTX Video Studio (webui/server.py)."),
     stat("Queued", [('ltx_webui_queue_jobs{state="queued"}', "")], 4, y, w=3,
          steps=[{"color": "green", "value": None}, {"color": "orange", "value": 3}, {"color": "red", "value": 8}]),
-    stat("Running for", [('max by (user, source) (ltx_job_running_source{source!="none"}) == 1', "{{user}} ({{source}})")],
+    stat("Running for", [('max by (user, source) (ltx_job_running_source{source!="none"}) > 0', "{{user}} ({{source}})")],
          7, y, w=6, no_value="Nobody", steps=[{"color": "purple", "value": None}], instant=True),
     stat("Refused: low memory", [("ltx_webui_rejected_low_memory", "")], 13, y, w=4,
          steps=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
@@ -176,7 +179,7 @@ panels += [
 
 dashboard = {
     "uid": "ltx-video", "title": "LTX-2.5 Video Generation", "tags": ["ltx", "video", "gpu"],
-    "timezone": "browser", "schemaVersion": 39, "version": 5, "editable": True,
+    "timezone": "browser", "schemaVersion": 39, "version": 6, "editable": True,
     "refresh": "5s", "time": {"from": "now-1h", "to": "now"},
     "annotations": {"list": []}, "templating": {"list": []}, "panels": panels,
 }

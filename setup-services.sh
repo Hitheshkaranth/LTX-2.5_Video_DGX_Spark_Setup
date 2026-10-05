@@ -4,6 +4,7 @@
 #
 #   ./setup-services.sh            # services only (UI on http://127.0.0.1:8090, metrics on :9092)
 #   ./setup-services.sh --tailnet  # also `tailscale serve` the UI over HTTPS, tailnet-only
+#   LTX_WORKERS=2 ./setup-services.sh   # render up to 2 jobs in parallel (default 1)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 UNITS="$HOME/.config/systemd/user"
@@ -27,6 +28,7 @@ After=network.target
 Type=simple
 Environment=LTX_WEBUI_HOST=127.0.0.1
 Environment=LTX_WEBUI_PORT=8090
+Environment=LTX_WORKERS=${LTX_WORKERS:-1}
 $TS_LISTEN_LINE
 ExecStart=/usr/bin/python3 $ROOT/webui/server.py
 Restart=always
