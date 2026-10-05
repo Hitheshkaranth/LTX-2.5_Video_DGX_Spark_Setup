@@ -59,9 +59,9 @@ MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "50")) * 2**30
 MAX_QUEUE = 10
 # Parallel jobs. They share one GPU, so each runs slower; overlap mainly hides model loading.
 WORKERS = max(1, int(os.environ.get("LTX_WORKERS", "1")))
-# Per-job GPU memory peak as nvidia-smi reports it (measured 22.5-23.3 GiB) + margin; reserved for
+# Per-job GPU memory peak as nvidia-smi reports it (measured 22.5-23.4 GiB; 8 s at 1280x704: 26 GiB); reserved for
 # running jobs that haven't allocated it yet. Compared against gpu_mem_bytes, so not the ~29 GiB system-wide figure.
-JOB_PEAK_BYTES = int(float(os.environ.get("LTX_JOB_PEAK_GIB", "24")) * 2**30)
+JOB_PEAK_BYTES = int(float(os.environ.get("LTX_JOB_PEAK_GIB", "27")) * 2**30)
 
 lock = threading.Lock()
 wake = threading.Condition(lock)
@@ -254,6 +254,27 @@ def history_by_file():
     return out
 
 
+def source_image(r):
+    """Thumbnail name in uploads/ for an image-to-video record, or None.
+
+    Studio jobs already keep their image in uploads/. CLI jobs (i2v.sh) point anywhere, so the
+    first time one is listed its image is copied in as src-<job_id>-<name>.
+    """
+    name = r.get("image")
+    if not name:
+        return None
+    if (UPLOADS / name).is_file():
+        return name
+    src = Path(r.get("image_path") or "")
+    if not src.is_file():
+        return None
+    cached = f"src-{r.get('job_id', 'job')}-{src.name}"
+    if not (UPLOADS / cached).is_file():
+        UPLOADS.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, UPLOADS / cached)
+    return cached
+
+
 def recent_history(n=15):
     """Last n finished jobs from any entry point (web or CLI), newest first, for the activity rail."""
     rows = []
@@ -270,7 +291,7 @@ def recent_history(n=15):
         name = Path(r.get("output", "")).name
         rows.append({"file": name if (OUTPUTS / name).is_file() else None, "status": r.get("status"),
                      "prompt": r.get("prompt", ""), "user": r.get("user", ""), "source": r.get("source", "cli"),
-                     "mode": r.get("mode", "t2v"), "image": r.get("image") if r.get("image") and (UPLOADS / r["image"]).is_file() else None,
+                     "mode": r.get("mode", "t2v"), "image": source_image(r),
                      "width": r.get("width"), "height": r.get("height"), "frames": r.get("frames"),
                      "duration_s": r.get("duration_s"), "end": r.get("end")})
     return rows
@@ -283,7 +304,7 @@ def list_videos():
         r = hist.get(p.name, {})
         vids.append({"file": p.name, "size_mb": round(p.stat().st_size / 2**20, 1), "mtime": p.stat().st_mtime,
                      "prompt": r.get("prompt", ""), "duration_s": r.get("duration_s"),
-                     "image": r.get("image") if r.get("image") and (UPLOADS / r["image"]).is_file() else None,
+                     "image": source_image(r), "mode": r.get("mode", "t2v"), "source": r.get("source", "cli"),
                      "width": r.get("width"), "height": r.get("height"), "video_seconds": r.get("video_seconds")})
     return vids
 

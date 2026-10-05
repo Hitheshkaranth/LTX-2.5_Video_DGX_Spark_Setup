@@ -84,6 +84,7 @@ def main():
         "prompt": arg(cmd, "--prompt", ""),
         # --image PATH FRAME STRENGTH turns the run into image-to-video.
         "image": Path(arg(cmd, "--image")).name if "--image" in cmd else "",
+        "image_path": str(Path(arg(cmd, "--image")).resolve()) if "--image" in cmd else "",
         "mode": "i2v" if "--image" in cmd else "t2v",
         # Set by webui/server.py; plain CLI runs are attributed to the shell user.
         "user": os.environ.get("LTX_JOB_USER") or os.environ.get("USER", "unknown"),
@@ -153,7 +154,7 @@ def main():
             "peak_gpu_mem_bytes": state["peak_gpu_mem_bytes"], "width": width, "height": height,
             "frames": frames, "fps": fps, "video_seconds": round(frames / fps, 3) if ok else 0,
             "output": output, "prompt": state["prompt"], "user": state["user"], "source": state["source"],
-            "image": state["image"], "mode": state["mode"],
+            "image": state["image"], "image_path": state["image_path"], "mode": state["mode"],
         }
         with open(HISTORY, "a") as f:
             fcntl.flock(f, fcntl.LOCK_EX)  # parallel jobs append to the same history

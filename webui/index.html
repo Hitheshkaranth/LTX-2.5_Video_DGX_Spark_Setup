@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LTX Video Studio</title>
 <meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23c8ff2e'/%3E%3Cstop offset='.5' stop-color='%2322d3ee'/%3E%3Cstop offset='1' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M12 9l12 7-12 7z' fill='%2307080b'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -519,7 +520,7 @@ function renderActivity(s) {
                     : `${esc(r.error || "failed")} · ${ago(r.end || now, now)}`;
     return `<li class="${ok && r.file ? "click" : ""} ${ok ? "" : "failed"}" ${ok && r.file ? `data-file="${esc(r.file)}"` : ""}>
       <span class="st ${ok ? "ok" : "bad"}">${ok ? "✓" : "!"}</span>${thumbHtml(r.image, "sm")}
-      <div class="body"><div class="t">${esc(r.prompt || "(no prompt)")}</div><div class="s">${r.mode === "i2v" ? "image → video · " : ""}${meta} · ${r.source === "cli" ? "CLI" : esc(who(r.user))}</div></div></li>`;
+      <div class="body"><div class="t">${esc(r.prompt || "(no prompt)")}</div><div class="s">${r.mode === "i2v" ? "image → video · " : ""}${meta} · ${r.source === "cli" ? "CLI" : r.source === "bench" ? "benchmark" : esc(who(r.user))}</div></div></li>`;
   }).join("") : '<li class="empty2">Nothing finished yet.</li>';
 }
 $("done").addEventListener("click", (e) => {
@@ -548,30 +549,60 @@ function renderTiles(items, s) {
   $("tiles").innerHTML = (st.filter === "all" ? [...run, ...q] : []).join("");
 }
 
-function renderFeed() {
-  const list = videos.filter((v) => st.filter === "all" || (st.filter === "i2v") === !!v.image);
-  $("feed").innerHTML = list.length ? list.map((v) => `
-    <article class="card" tabindex="0" data-i="${videos.indexOf(v)}">
-      <video src="videos/${encodeURIComponent(v.file)}#t=0.1" muted loop playsinline preload="metadata"
+const isI2V = (v) => v.mode === "i2v" || !!v.image;
+// Videos load only when near the viewport: a gallery of ~100 clips otherwise fires hundreds of
+// range requests on every page load, which is slow over Tailscale.
+const lazy = new IntersectionObserver((entries) => entries.forEach((en) => {
+  if (!en.isIntersecting) return;
+  const vid = en.target;
+  if (!vid.getAttribute("src")) { vid.preload = "metadata"; vid.src = vid.dataset.src; }
+  lazy.unobserve(vid);
+}), {rootMargin: "600px 0px"});
+const sigOf = (v) => [v.file, v.image, v.prompt, v.duration_s].join("|");
+
+function cardNode(v) {
+  const el = document.createElement("article");
+  el.className = "card"; el.tabIndex = 0; el.dataset.file = v.file; el.dataset.sig = sigOf(v);
+  el.innerHTML = `
+      <video data-src="videos/${encodeURIComponent(v.file)}#t=0.1" muted loop playsinline preload="none"
              ${v.width ? `width="${v.width}" height="${v.height}"` : ""}></video>
       <div class="badges">
-        ${v.image ? `<img class="src" src="uploads/${encodeURIComponent(v.image)}" alt="source image">` : ""}
-        ${v.image ? '<span class="badge lime">IMG → VID</span>' : ""}
+        ${v.image ? `<img class="src" src="uploads/${encodeURIComponent(v.image)}" alt="source image" loading="lazy">` : ""}
+        ${isI2V(v) ? '<span class="badge lime">IMG → VID</span>' : ""}
         ${v.video_seconds ? `<span class="badge r">${v.video_seconds.toFixed(0)}s</span>` : ""}
       </div>
       <div class="shade"><p>${esc(v.prompt || v.file)}</p>
         <div class="meta">${v.width ? `<span>${v.width}×${v.height}</span>` : ""}${v.duration_s ? `<span>made in ${fmtS(v.duration_s)}</span>` : ""}<span>${v.size_mb} MB</span></div>
-      </div>
-    </article>`).join("")
-    : `<div class="empty">${st.filter === "i2v" ? "No image-to-video clips yet. Attach an image below to make one." : "Nothing here yet. Describe a shot below and hit Generate."}</div>`;
+      </div>`;
+  lazy.observe(el.querySelector("video"));
+  return el;
 }
-$("feed").addEventListener("mouseover", (e) => { const v = e.target.closest(".card")?.querySelector("video"); if (v && v.paused) v.play().catch(() => {}); });
+
+// Keyed update: existing cards (and their loaded/playing videos) are reused; only new clips are built.
+function renderFeed() {
+  const list = videos.filter((v) => st.filter === "all" || (st.filter === "i2v") === isI2V(v));
+  const feed = $("feed");
+  if (!list.length) {
+    feed.innerHTML = `<div class="empty">${st.filter === "i2v" ? "No image-to-video clips yet. Attach an image below to make one." : "Nothing here yet. Describe a shot below and hit Generate."}</div>`;
+    return;
+  }
+  const have = new Map([...feed.querySelectorAll(":scope > .card")].map((c) => [c.dataset.file, c]));
+  const nodes = list.map((v) => { const c = have.get(v.file); return c && c.dataset.sig === sigOf(v) ? c : cardNode(v); });
+  if (nodes.length === feed.children.length && nodes.every((n, i) => feed.children[i] === n)) return;
+  feed.replaceChildren(...nodes);
+}
+$("feed").addEventListener("mouseover", (e) => {
+  const v = e.target.closest(".card")?.querySelector("video"); if (!v) return;
+  if (!v.getAttribute("src")) v.src = v.dataset.src;
+  if (v.paused) v.play().catch(() => {});
+});
 $("feed").addEventListener("mouseout", (e) => {
   const c = e.target.closest(".card"); if (!c || c.contains(e.relatedTarget)) return;
-  const v = c.querySelector("video"); if (v) { v.pause(); v.currentTime = 0.1; }
+  const v = c.querySelector("video"); if (v && v.getAttribute("src")) { v.pause(); v.currentTime = 0.1; }
 });
-$("feed").addEventListener("click", (e) => { const c = e.target.closest(".card[data-i]"); if (c) openLb(videos[+c.dataset.i]); });
-$("feed").addEventListener("keydown", (e) => { if (e.key === "Enter") { const c = e.target.closest(".card[data-i]"); if (c) openLb(videos[+c.dataset.i]); } });
+const byFile = (f) => videos.find((x) => x.file === f);
+$("feed").addEventListener("click", (e) => { const c = e.target.closest(".card[data-file]"); if (c) openLb(byFile(c.dataset.file)); });
+$("feed").addEventListener("keydown", (e) => { if (e.key === "Enter") { const c = e.target.closest(".card[data-file]"); if (c) openLb(byFile(c.dataset.file)); } });
 document.querySelector(".tabs").addEventListener("click", (e) => {
   const b = e.target.closest(".tab"); if (!b) return;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === b));
@@ -592,6 +623,7 @@ function openLb(v) {
     </div>
     <button class="btn" id="reuse">Reuse prompt</button>
     ${v.image ? '<button class="btn" id="reanimate">Animate this image again</button>' : ""}
+    ${isI2V(v) && !v.image ? '<p class="muted" style="font-size:12px;color:var(--muted)">Made from an image that is no longer on the server.</p>' : ""}
     <a class="btn lime" href="videos/${encodeURIComponent(v.file)}" download>Download MP4</a>`;
   $("reuse").onclick = () => { ta.value = v.prompt || ""; ta.dispatchEvent(new Event("input")); closeLb(); ta.focus(); };
   if (v.image) $("reanimate").onclick = async () => {
@@ -632,14 +664,14 @@ async function refresh() {
     renderActivity(s);
 
     const v = await (await fetch("api/videos")).json();
-    const key = JSON.stringify(v.map((x) => [x.file, x.image]));
+    const key = JSON.stringify(v.map(sigOf));
     if (key !== lastVideosKey) {
       lastVideosKey = key; videos = v; renderFeed();
       const secs = v.reduce((a, x) => a + (x.video_seconds || 0), 0);
       $("stats").innerHTML = `
         <div class="stat"><b>${v.length}</b><span>clips</span></div>
         <div class="stat"><b>${fmtS(secs)}</b><span>of footage</span></div>
-        <div class="stat"><b>${v.filter((x) => x.image).length}</b><span>from images</span></div>
+        <div class="stat"><b>${v.filter(isI2V).length}</b><span>from images</span></div>
         <div class="stat"><b>~1 min</b><span>for a 4 s clip</span></div>`;
     }
   } catch {

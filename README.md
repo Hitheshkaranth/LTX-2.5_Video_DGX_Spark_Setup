@@ -366,7 +366,7 @@ The studio can render several jobs at once: set `LTX_WORKERS` (default `1`), e.g
 system-wide), so **three fit** when nothing else holds the memory: measured with 3 renders in flight, 49 GiB stayed available.
 
 - **Memory-safe start:** before starting a job, the studio subtracts the memory that already-running
-  jobs haven't allocated yet (`LTX_JOB_PEAK_GIB`, default 24: the measured 22.5–23.3 GiB per-process peak plus a margin). A just-started job counts at its full
+  jobs haven't allocated yet (`LTX_JOB_PEAK_GIB`, default 27: measured per-process peaks are 22.5–23.4 GiB, and 26 GiB for 8 s at 1280×704). A just-started job counts at its full
   peak, so two workers can't both see "plenty free" at the same moment and overshoot. If there isn't
   room, the job waits in the queue instead of failing.
 - **What to expect:** all jobs share one GPU, and the denoising passes already keep it busy. Parallel
@@ -387,7 +387,7 @@ system-wide), so **three fit** when nothing else holds the memory: measured with
   |---|---|---|
   | `LTX_WORKERS` | `1` | Jobs rendered at once |
   | `LTX_MIN_FREE_GIB` | `50` | Free memory required to start a job (~29 GiB peak + ~20 GiB no-swap margin) |
-  | `LTX_JOB_PEAK_GIB` | `24` | Per-job GPU memory peak (as `nvidia-smi` reports it) reserved for a running job that hasn't fully loaded yet |
+  | `LTX_JOB_PEAK_GIB` | `27` | Per-job GPU memory peak (as `nvidia-smi` reports it) reserved for a running job that hasn't fully loaded yet |
 
 ### Publishing to your tailnet
 
