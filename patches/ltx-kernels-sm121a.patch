@@ -1,0 +1,22 @@
+diff --git a/packages/ltx-kernels/setup.py b/packages/ltx-kernels/setup.py
+index 8d548d9..335d4a1 100644
+--- a/packages/ltx-kernels/setup.py
++++ b/packages/ltx-kernels/setup.py
+@@ -188,7 +188,7 @@ def _blockwise_gencode() -> tuple[list[str], bool]:
+ # only emitted for those; on a plain family target (sm_110) the CUDA headers fall back to
+ # a software emulation and the quantize kernel balloons from 360 to 1312 SASS instructions,
+ # which drops it from memory-bound (~250 GB/s) to ALU-bound (~62 GB/s) on Thor.
+-_NVFP4_ARCHES = ["100a", "110a", "120a"]
++_NVFP4_ARCHES = ["100a", "110a", "120a", "121a"]  # 121a: GB10 / DGX Spark (local patch)
+ 
+ 
+ def _nvfp4_gencode() -> list[str]:
+@@ -206,6 +206,8 @@ def _nvfp4_gencode() -> list[str]:
+             sel.append("110a")
+         elif tok.startswith("12.0"):
+             sel.append("120a")
++        elif tok.startswith("12.1"):
++            sel.append("121a")
+     return [a for a in dict.fromkeys(sel) if a in base]
+ 
+ 

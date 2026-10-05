@@ -1,0 +1,105 @@
+{
+  "prompt": "A red fox trots through fresh snow in a quiet birch forest at golden hour, soft breath vapor, gentle wind sound, cinematic tracking shot",
+  "seed": 42,
+  "fps": 24,
+  "gpu": "NVIDIA GB10 (DGX Spark)",
+  "pipeline": "ltx_pipelines.distilled, nvfp4-prequant, 8+3 steps",
+  "results": [
+    {
+      "size": "768x512",
+      "width": 768,
+      "height": 512,
+      "frames": 49,
+      "video_seconds": 2.04,
+      "status": "done",
+      "duration_s": 44.11,
+      "peak_gpu_mem_gib": 22.6,
+      "error": null,
+      "seconds_per_video_second": 21.6
+    },
+    {
+      "size": "768x512",
+      "width": 768,
+      "height": 512,
+      "frames": 97,
+      "video_seconds": 4.04,
+      "status": "done",
+      "duration_s": 60.89,
+      "peak_gpu_mem_gib": 22.5,
+      "error": null,
+      "seconds_per_video_second": 15.1
+    },
+    {
+      "size": "768x512",
+      "width": 768,
+      "height": 512,
+      "frames": 121,
+      "video_seconds": 5.04,
+      "status": "done",
+      "duration_s": 69.67,
+      "peak_gpu_mem_gib": 22.6,
+      "error": null,
+      "seconds_per_video_second": 13.8
+    },
+    {
+      "size": "768x512",
+      "width": 768,
+      "height": 512,
+      "frames": 193,
+      "video_seconds": 8.04,
+      "status": "done",
+      "duration_s": 94.29,
+      "peak_gpu_mem_gib": 23.3,
+      "error": null,
+      "seconds_per_video_second": 11.7
+    },
+    {
+      "size": "1024x576",
+      "width": 1024,
+      "height": 576,
+      "frames": 97,
+      "video_seconds": 4.04,
+      "status": "done",
+      "duration_s": 77.76,
+      "peak_gpu_mem_gib": 23.0,
+      "error": null,
+      "seconds_per_video_second": 19.2
+    },
+    {
+      "size": "1280x704",
+      "width": 1280,
+      "height": 704,
+      "frames": 97,
+      "video_seconds": 4.04,
+      "status": "done",
+      "duration_s": 107.14,
+      "peak_gpu_mem_gib": 23.0,
+      "error": null,
+      "seconds_per_video_second": 26.5
+    },
+    {
+      "size": "1536x1024",
+      "width": 1536,
+      "height": 1024,
+      "frames": 49,
+      "video_seconds": 2.04,
+      "status": "done",
+      "duration_s": 96.89,
+      "peak_gpu_mem_gib": 22.9,
+      "error": null,
+      "seconds_per_video_second": 47.5
+    },
+    {
+      "size": "1536x1024",
+      "width": 1536,
+      "height": 1024,
+      "frames": 97,
+      "video_seconds": 4.04,
+      "status": "done",
+      "duration_s": 164.87,
+      "peak_gpu_mem_gib": 23.0,
+      "error": null,
+      "seconds_per_video_second": 40.8
+    }
+  ]
+}

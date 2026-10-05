@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LTX Video Studio</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --line: #e2e6ec;
+    --accent: #3b5bdb; --accent-text: #ffffff; --ok: #2b8a3e; --warn: #c25e00; --bad: #c92a2a;
+    --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111418; --panel: #1a1e24; --text: #e6e9ee; --muted: #94a0b0; --line: #2a3039;
+      --accent: #748ffc; --accent-text: #0d1016; --ok: #69db7c; --warn: #ffa94d; --bad: #ff8787; --chip: #242a33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .who { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  textarea { width: 100%; min-height: 120px; resize: vertical; padding: 10px; border-radius: 8px;
+             border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
+  select, input { padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
+  button { margin-top: 14px; width: 100%; padding: 11px; border: 0; border-radius: 8px; background: var(--accent);
+           color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .banner { margin-top: 16px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
+  .banner.warn { border-color: var(--warn); color: var(--warn); }
+  .banner.ok { border-color: var(--ok); color: var(--ok); }
+  .err { color: var(--bad); font-size: 13px; margin-top: 8px; min-height: 1em; }
+  .bar { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; margin: 8px 0 4px; }
+  .bar > div { height: 100%; background: var(--accent); transition: width .5s; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .jobs { list-style: none; margin: 0; padding: 0; }
+  .jobs li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .jobs li:first-child { border-top: 0; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 10px; background: var(--chip); font-size: 12px; margin-right: 6px; }
+  .chip.done { color: var(--ok); } .chip.failed { color: var(--bad); } .chip.running { color: var(--accent); }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .vid { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .vid video { width: 100%; display: block; background: #000; }
+  .vid .meta { padding: 10px 12px; font-size: 13px; }
+  .vid .prompt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 6px; }
+  .vid a { color: var(--accent); }
+  .trunc { overflow-wrap: anywhere; }
+  section { margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>LTX Video Studio</h1>
+    <span class="who" id="who"></span>
+  </header>
+  <div class="banner" id="banner">Checking machine status…</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>New video</h2>
+      <textarea id="prompt" placeholder="Describe the shot: subject, action, setting, lighting, camera movement and any sounds. Example: A red fox trots through fresh snow in a birch forest at golden hour, soft wind sound, slow tracking shot."></textarea>
+      <div class="row">
+        <label>Size
+          <select id="size">
+            <option value="768x512">768 × 512 landscape (fast)</option>
+            <option value="512x768">512 × 768 portrait (fast)</option>
+            <option value="1024x576">1024 × 576 landscape</option>
+            <option value="576x1024">576 × 1024 portrait</option>
+            <option value="1280x704">1280 × 704 landscape</option>
+            <option value="704x1280">704 × 1280 portrait</option>
+            <option value="1536x1024">1536 × 1024 (slow)</option>
+          </select>
+        </label>
+        <label>Length
+          <select id="frames">
+            <option value="49">2 seconds</option>
+            <option value="97" selected>4 seconds</option>
+            <option value="121">5 seconds</option>
+            <option value="193">8 seconds</option>
+          </select>
+        </label>
+        <label>Seed (optional)
+          <input id="seed" type="number" min="0" placeholder="random">
+        </label>
+      </div>
+      <button id="go">Generate</button>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div class="card">
+      <h2>Now running</h2>
+      <div id="live" class="muted">Idle.</div>
+      <h2 style="margin-top:16px">Recent requests</h2>
+      <ul class="jobs" id="jobs"><li class="muted">None yet.</li></ul>
+    </div>
+  </div>
+
+  <section>
+    <h2>Videos</h2>
+    <div class="gallery" id="gallery"><span class="muted">Loading…</span></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const STAGE = {starting: "Starting", text_encoder: "Reading the prompt", denoise_stage1: "Generating (pass 1 of 2)",
+               upsample: "Upscaling", denoise_stage2: "Refining (pass 2 of 2)", decode: "Rendering video and audio"};
+let lastVideos = "";
+
+async function refresh() {
+  try {
+    const s = await (await fetch("api/status")).json();
+    $("who").textContent = "Signed in via Tailscale as " + s.user;
+    const b = $("banner");
+    if (s.can_run) {
+      b.className = "banner ok";
+      b.textContent = `Ready: ${s.mem_free_gib} GiB of memory free.`;
+    } else {
+      b.className = "banner warn";
+      b.textContent = `Can't generate right now: only ${s.mem_free_gib} GiB of memory free (needs ${s.min_free_gib}).` +
+        (s.llm_running ? ` The LLM server (${esc(s.llm_container)}) is running and holding the memory. Ask the admin to stop it.` : "");
+    }
+    $("go").disabled = !s.can_run;
+
+    if (s.live) {
+      const pct = s.live.steps ? Math.round(100 * s.live.step / s.live.steps) : null;
+      $("live").innerHTML = `<div><b>${esc(STAGE[s.live.stage] || s.live.stage)}</b>${pct !== null ? ` · ${pct}%` : ""}</div>
+        <div class="bar"><div style="width:${pct ?? 0}%"></div></div>
+        <div class="muted">${s.live.elapsed}s elapsed · ${s.live.gpu_mem_gib} GiB GPU memory</div>`;
+    } else {
+      $("live").textContent = "Idle.";
+    }
+
+    $("jobs").innerHTML = s.jobs.length ? s.jobs.map((j) => `<li>
+        <span class="chip ${j.status}">${j.status}</span><span class="muted">${esc(j.size)} · ${(j.frames - 1) / 24}s · ${esc(j.user)}</span>
+        <div class="trunc">${esc(j.prompt)}</div>
+        ${j.error ? `<div class="err">${esc(j.error)}</div>` : ""}</li>`).join("")
+      : '<li class="muted">None yet.</li>';
+
+    const v = await (await fetch("api/videos")).json();
+    const key = JSON.stringify(v.map((x) => x.file));
+    if (key !== lastVideos) {
+      lastVideos = key;
+      $("gallery").innerHTML = v.length ? v.map((x) => `<div class="vid">
+          <video src="videos/${encodeURIComponent(x.file)}" controls preload="metadata"></video>
+          <div class="meta"><div class="prompt">${esc(x.prompt || x.file)}</div>
+          <div class="muted">${x.width ? `${x.width}×${x.height} · ` : ""}${x.video_seconds ? `${x.video_seconds.toFixed(1)}s · ` : ""}${x.duration_s ? `made in ${Math.round(x.duration_s)}s · ` : ""}${x.size_mb} MB ·
+          <a href="videos/${encodeURIComponent(x.file)}" download>download</a></div></div></div>`).join("")
+        : '<span class="muted">No videos yet.</span>';
+    }
+  } catch (e) {
+    $("banner").className = "banner warn";
+    $("banner").textContent = "Lost contact with the server. Retrying…";
+  }
+}
+
+$("go").onclick = async () => {
+  $("err").textContent = "";
+  const body = {prompt: $("prompt").value, size: $("size").value, frames: +$("frames").value, seed: $("seed").value};
+  $("go").disabled = true;
+  try {
+    const r = await fetch("api/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!r.ok) $("err").textContent = j.error || "Request failed.";
+  } catch (e) {
+    $("err").textContent = "Couldn't reach the server.";
+  }
+  refresh();
+};
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

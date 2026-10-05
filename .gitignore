@@ -1,0 +1,12 @@
+# Upstream code (cloned + patched by install.sh) and weights (~44 GiB, download.sh)
+LTX-2/
+models/
+
+# Generated videos and runtime state (job logs, prompts, requester logins)
+outputs/
+logs/
+
+__pycache__/
+*.pyc
+*.tmp
+*.bak-*

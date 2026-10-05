@@ -1,0 +1,9 @@
+# Append under scrape_configs: in prometheus.yml. Prometheus runs in Docker here, so it reaches
+# the host-side exporter through host.docker.internal (needs extra_hosts: host-gateway).
+  - job_name: ltx
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:9092
+        labels:
+          service: ltx
