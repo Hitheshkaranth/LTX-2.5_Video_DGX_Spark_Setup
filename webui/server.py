@@ -32,7 +32,10 @@ UPLOADS = ROOT / "uploads"  # conditioning images for image-to-video
 RUNNING_DIR = ROOT / "logs" / "running"  # ltx_job.py: one <job_id>.json per in-flight job
 LEGACY_CURRENT = ROOT / "logs" / "current.json"  # older ltx_job.py versions
 WEBUI_STATE = ROOT / "logs" / "webui_state.json"  # read by ltx_exporter.py for Grafana
-QUEUE_FILE = ROOT / "logs" / "webui_queue.json"  # survives restarts: queued jobs resume, running ones are adopted
+QUEUE_FILE = ROOT / "logs" / "webui_queue.json"
+# While this file exists no new jobs start (running ones finish; new requests still queue).
+# Its text is shown to users, e.g.:  echo "Benchmark running" > logs/webui_pause
+PAUSE_FILE = ROOT / "logs" / "webui_pause"  # survives restarts: queued jobs resume, running ones are adopted
 HISTORY = ROOT / "logs" / "jobs.jsonl"
 INDEX = Path(__file__).resolve().parent / "index.html"
 LISTEN = (os.environ.get("LTX_WEBUI_HOST", "127.0.0.1"), int(os.environ.get("LTX_WEBUI_PORT", "8090")))
@@ -50,8 +53,9 @@ SIZES = imageinfo.SIZES | {"768x512", "512x768", "1024x576", "576x1024", "1280x7
 MAX_IMAGE_BYTES = 16 * 2**20
 MAX_BODY_BYTES = MAX_IMAGE_BYTES * 4 // 3 + 64 * 1024  # base64 overhead + JSON
 FRAMES = {49, 97, 121, 193}  # 2s, 4s, 5s, 8s at 24 fps (must be 8k+1)
-# Observed peak ~29 GiB above idle; keep headroom. Override with LTX_MIN_FREE_GIB.
-MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "40")) * 2**30
+# A job peaks ~29 GiB system-wide; 50 GiB free before starting leaves ~20 GiB after it loads,
+# the margin below which this unified-memory box starts swapping. Override with LTX_MIN_FREE_GIB.
+MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "50")) * 2**30
 MAX_QUEUE = 10
 # Parallel jobs. They share one GPU, so each runs slower; overlap mainly hides model loading.
 WORKERS = max(1, int(os.environ.get("LTX_WORKERS", "1")))
@@ -81,6 +85,13 @@ def llm_running():
 
 def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower())[:40].strip("-") or "clip"
+
+
+def paused_reason():
+    try:
+        return PAUSE_FILE.read_text().strip()[:200] or "Paused by the admin"
+    except OSError:
+        return None
 
 
 def save_queue():
@@ -141,6 +152,9 @@ def worker():
             while not any(j["status"] == "queued" for j in jobs):
                 wake.wait()
             job = next(j for j in jobs if j["status"] == "queued")
+            if PAUSE_FILE.exists():
+                wake.wait(timeout=5)
+                continue
             if sum(j["status"] == "running" for j in jobs) >= WORKERS:
                 wake.wait(timeout=5)  # adopted renders from before a restart can fill the slots
                 continue
@@ -315,7 +329,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "workers": WORKERS, "mem_free_gib": round(free / 2**30, 1),
                             "can_run": free >= MIN_FREE_BYTES or bool(lives),  # with jobs running, new ones queue and wait "llm_running": llm_running(), "llm_container": LLM_CONTAINER,
                             "min_free_gib": MIN_FREE_BYTES // 2**30, "user": self.user(),
-                            "now": time.time(), "recent": recent_history()})
+                            "now": time.time(), "recent": recent_history(), "paused": paused_reason()})
         elif path == "/api/videos":
             self.send_json(list_videos())
         elif path.startswith("/videos/"):

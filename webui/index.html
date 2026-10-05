@@ -496,7 +496,7 @@ function renderActivity(s) {
   $("nowTitle").textContent = items.length > 1 ? `Now rendering · ${items.length} in parallel` : "Now rendering";
   $("nowBox").classList.toggle("on", items.length > 0);
   $("now").innerHTML = items.length ? rendered.map((r) => r.html).join("")
-    : `<div class="idle">Nothing rendering. ${s.can_run ? "Ready for your next clip." : "Waiting for free memory."}</div>`;
+    : `<div class="idle">Nothing rendering. ${s.paused ? `Paused: ${esc(s.paused)}. Your jobs wait in the queue.` : s.can_run ? "Ready for your next clip." : "Waiting for free memory."}</div>`;
   // ── up next ──
   const queued = s.jobs.filter((j) => j.status === "queued").sort((a, b) => a.queued - b.queued);
   $("qn").textContent = queued.length;
@@ -543,7 +543,7 @@ function renderTiles(items, s) {
         <div class="sub">${esc((e.prompt || "").slice(0, 80))}${(e.prompt || "").length > 80 ? "…" : ""}</div></div></div>`;
   });
   const q = queued.map((j, i) => `<div class="card pending queued" style="--ar:${arOf(j.size)}">${bgOf(j.image)}<div>
-      <div class="stage">${j.waiting === "memory" ? "Waiting for memory" : `In queue · #${i + 1}`}</div>
+      <div class="stage">${s.paused ? "Paused" : j.waiting === "memory" ? "Waiting for memory" : `In queue · #${i + 1}`}</div>
       <div class="sub">${esc(j.prompt.slice(0, 80))}${j.prompt.length > 80 ? "…" : ""}</div></div></div>`);
   $("tiles").innerHTML = (st.filter === "all" ? [...run, ...q] : []).join("");
 }
@@ -615,7 +615,10 @@ async function refresh() {
     $("who").title = "Signed in via Tailscale";
     const running = s.jobs.some((j) => j.status === "running") || !!(s.lives || []).length || !!s.live;
     const dot = $("stateDot"), txt = $("stateText");
-    if (!s.can_run) {
+    if (s.paused) {
+      dot.className = "dot busy"; txt.textContent = `Paused: ${s.paused}`;
+      $("state").title = "New jobs wait in the queue until the pause ends; running jobs finish normally.";
+    } else if (!s.can_run) {
       dot.className = "dot bad";
       txt.textContent = s.llm_running ? `Busy: the LLM (${s.llm_container}) is using the memory` : `Low memory: ${s.mem_free_gib} GiB free`;
       $("state").title = `Needs ${s.min_free_gib} GiB free to start a job.`;

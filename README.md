@@ -50,13 +50,13 @@ It gives you:
 
 ### Samples
 
-All three were generated on the Spark with the commands in this README (768×512, 24 fps, with audio;
+All four were generated on the Spark with the commands in this README (768×512, 24 fps, with audio;
 GIF previews are downscaled and silent).
 
-| A red fox trots through fresh snow at golden hour | Coffee by a rainy café window, slow push-in | Sunset waves crash on volcanic rocks, aerial |
-|:---:|:---:|:---:|
-| <img src="assets/sample-fox.gif" width="100%"> | <img src="assets/sample-coffee.gif" width="100%"> | <img src="assets/sample-waves.gif" width="100%"> |
-| 2 s clip | 2 s clip | 4 s clip |
+| A red fox trots through fresh snow at golden hour | Coffee by a rainy café window, slow push-in | Sunset waves crash on volcanic rocks, aerial | **Image → video:** a still animated with *"waves burst against the rocks, slow push-in"* |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/sample-fox.gif" width="100%"> | <img src="assets/sample-coffee.gif" width="100%"> | <img src="assets/sample-waves.gif" width="100%"> | <img src="assets/sample-i2v.gif" width="100%"> |
+| 2 s · text | 2 s · text | 4 s · text | 4 s · from an image |
 
 ### Screenshots
 
@@ -242,8 +242,38 @@ the image header (PNG, JPEG, WebP; standard library only) and picks the preset c
 Phone JPEGs are usually stored landscape with an EXIF "rotate 90°" tag. The pipeline's decoder
 applies that rotation, so the size picker honours EXIF orientation too; otherwise a portrait photo
 would be rendered landscape and cropped. Argument handling, EXIF rotation and the pipeline's own
-preprocessing were verified on CPU against the real parser. Generation timings for image-to-video
-haven't been benchmarked yet; expect them to match text-to-video at the same size and length.
+preprocessing were also verified on CPU against the real parser.
+
+### Image-to-video settings in the studio
+
+| Control | Options | Notes |
+|---|---|---|
+| **Image** | Picture button, drag onto the page, or paste | PNG, JPEG or WebP, up to 16 MB. Becomes frame 0. |
+| **Shape** | **Match image** (default once an image is attached), Landscape, Portrait, Square | Match image picks the preset closest to the photo's aspect ratio (table above); the others crop |
+| **Quality** | Fast · HD · Max | Same tiers as `LTX_TIER`: ~768 / ~1024–1280 / ~1536 px |
+| **Length** | 2 · 4 · 5 · 8 s | 49 / 97 / 121 / 193 frames at 24 fps |
+| **Image strength** | 0.30–1.00 (default 1.00) | 1.0 keeps frame 0 identical to the photo; lower drifts further |
+| **Seed** | optional | Same image + prompt + settings + seed reproduces a clip |
+| **Prompt** | free text | Describe *motion, camera and sound*; the image already sets the look |
+
+The API takes the same settings: `POST /api/generate` with `{"prompt", "size": "auto:fast|auto:hd|auto:max"
+or "WxH", "frames", "seed", "image": "<data: URL or base64>", "strength"}`.
+
+### Measured on the GPU
+
+<div align="center">
+<img src="assets/i2v-sample.png" alt="Input image, frame 0, 2 s and 4 s of the generated clip" width="100%">
+</div>
+
+| | Image → video | Text → video (same size) |
+|---|---|---|
+| Size / length | 768×512 · 4 s (auto-matched to the 768×512 input) | 768×512 · 4 s |
+| Wall time | **68 s** | 61 s |
+| Peak GPU memory | **22.5 GiB** | 22.5 GiB |
+| Frame 0 vs input image | mean difference **2.6 / 255** (H.264 noise only) | n/a |
+
+Image conditioning costs almost nothing extra: one more VAE encode of the still. Run on a quiet GPU
+(no other jobs), `ltx_job.py` records it with `mode: i2v`.
 
 ## The GB10 (sm_121) Patch
 
@@ -290,7 +320,7 @@ A dark, cinematic studio served by a standard-library Python app (`webui/server.
   with the source-image thumbnail on clips made from images. Click a clip for a full-screen viewer with
   the prompt, render stats, **Reuse prompt**, **Animate this image again** and download.
 - **Queue:** up to 10 waiting, started in order by 1 worker (or more; see [Parallel generation](#parallel-generation)).
-- **Memory gate:** refuses to start a job with less than 40 GiB free (`LTX_MIN_FREE_GIB`) and tells
+- **Memory gate:** refuses to start a job with less than 50 GiB free (`LTX_MIN_FREE_GIB`) and tells
   you if the LLM container is the reason, instead of letting the box swap.
 - **Who asked:** behind `tailscale serve`, each job is tagged with the requester's Tailscale login
   (`Tailscale-User-Login`). On the optional direct listener it uses `tailscale whois` instead.
@@ -349,6 +379,15 @@ system-wide), so two or three fit when nothing else holds the memory.
 - **Restart-safe:** the queue is saved to `logs/webui_queue.json`, and the service uses
   `KillMode=process`, so restarting or updating the studio doesn't kill renders in progress. The new
   server adopts them (marking them done when they finish) and resumes the queue.
+- **Pause switch:** `echo "Maintenance" > logs/webui_pause` stops new jobs from starting (running ones
+  finish; people can still queue, and the page shows the reason). `rm logs/webui_pause` resumes.
+- **Settings:**
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `LTX_WORKERS` | `1` | Jobs rendered at once |
+  | `LTX_MIN_FREE_GIB` | `50` | Free memory required to start a job (~29 GiB peak + ~20 GiB no-swap margin) |
+  | `LTX_JOB_PEAK_GIB` | `30` | Memory reserved for a running job that hasn't fully loaded yet |
 
 ### Publishing to your tailnet
 
@@ -440,6 +479,35 @@ first run): this is the real time from pressing *Generate* to having an MP4.
 Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks/make_charts.py`
 (with the studio at `LTX_WORKERS=1`, the setting these numbers were measured with).
 
+### Concurrency benchmark
+
+Does rendering several clips at once finish a batch sooner on one GB10? `benchmarks/parallel_bench.py`
+renders the same 4 prompts (fixed seeds) with 1, 2 and 3 jobs in flight at 768×512 · 4 s, and with 1 and
+2 at 1280×704 · 4 s. For each run it records:
+
+- **Makespan:** wall time for the whole batch.
+- **Throughput** in clips per minute.
+- Per-job time and peak GPU memory (from `ltx_job.py`).
+- **Lowest free memory and swap traffic** during the batch.
+- Average GPU utilization.
+- **Contention:** how many *other* jobs (studio users) overlapped it. Rows with `contended: true` were
+  measured on a shared GPU and aren't clean scaling numbers.
+
+Every job start passes the same memory gate as the studio, so the benchmark is safe to run while
+people keep generating. For clean numbers, pause the studio first.
+
+```bash
+echo "Benchmark running" > logs/webui_pause      # optional: clean numbers
+python3 benchmarks/parallel_bench.py              # ~25 min on a quiet GPU
+LTX-2/.venv/bin/python benchmarks/make_parallel_chart.py
+rm -f logs/webui_pause
+```
+
+<!-- PARALLEL_RESULTS -->
+*The first full run is in progress on the live, shared box; the results table and chart land here when
+it completes.*
+<!-- /PARALLEL_RESULTS -->
+
 ## Repository Layout
 
 ```text
@@ -463,7 +531,8 @@ Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks
 │   ├── grafana-dashboard.json
 │   └── prometheus-scrape.yml
 ├── benchmarks/
-│   ├── bench.py · make_charts.py · results.json · generation_benchmark.png
+│   ├── bench.py · make_charts.py · results.json · generation_benchmark.png        # size/length sweep
+│   ├── parallel_bench.py · make_parallel_chart.py · parallel_results.json             # 1 vs 2 vs 3 jobs at once
 └── assets/                    # banner, sample GIFs, screenshots
 ```
 
