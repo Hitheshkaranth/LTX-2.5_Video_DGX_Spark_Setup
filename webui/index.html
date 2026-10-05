@@ -2,182 +2,597 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LTX Video Studio</title>
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --line: #e2e6ec;
-    --accent: #3b5bdb; --accent-text: #ffffff; --ok: #2b8a3e; --warn: #c25e00; --bad: #c92a2a;
-    --chip: #eef1f6;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #111418; --panel: #1a1e24; --text: #e6e9ee; --muted: #94a0b0; --line: #2a3039;
-      --accent: #748ffc; --accent-text: #0d1016; --ok: #69db7c; --warn: #ffa94d; --bad: #ff8787; --chip: #242a33;
-    }
+    --bg: #07080b; --panel: rgba(22, 24, 31, .72); --panel-solid: #15171e; --line: rgba(255,255,255,.08);
+    --line2: rgba(255,255,255,.14); --text: #eef0f4; --muted: #8a91a0; --dim: #5b6170;
+    --lime: #c8ff2e; --lime-ink: #0b1000; --violet: #8b5cf6; --cyan: #22d3ee; --ok: #4ade80; --bad: #f87171;
+    --radius: 18px; --composer-h: 168px;
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --display: "Space Grotesk", var(--font);
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 22px; margin: 0; }
-  h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-  .who { color: var(--muted); font-size: 13px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
-  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-  textarea { width: 100%; min-height: 120px; resize: vertical; padding: 10px; border-radius: 8px;
-             border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-  label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
-  select, input { padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; }
-  button { margin-top: 14px; width: 100%; padding: 11px; border: 0; border-radius: 8px; background: var(--accent);
-           color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .banner { margin-top: 16px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); }
-  .banner.warn { border-color: var(--warn); color: var(--warn); }
-  .banner.ok { border-color: var(--ok); color: var(--ok); }
-  .err { color: var(--bad); font-size: 13px; margin-top: 8px; min-height: 1em; }
-  .bar { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; margin: 8px 0 4px; }
-  .bar > div { height: 100%; background: var(--accent); transition: width .5s; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .jobs { list-style: none; margin: 0; padding: 0; }
-  .jobs li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
-  .jobs li:first-child { border-top: 0; }
-  .chip { display: inline-block; padding: 1px 8px; border-radius: 10px; background: var(--chip); font-size: 12px; margin-right: 6px; }
-  .chip.done { color: var(--ok); } .chip.failed { color: var(--bad); } .chip.running { color: var(--accent); }
-  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-  .vid { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  .vid video { width: 100%; display: block; background: #000; }
-  .vid .meta { padding: 10px 12px; font-size: 13px; }
-  .vid .prompt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 6px; }
-  .vid a { color: var(--accent); }
-  .trunc { overflow-wrap: anywhere; }
-  section { margin-top: 24px; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  body { min-height: 100vh; overflow-x: hidden; }
+  body::before { /* ambient glow */
+    content: ""; position: fixed; inset: -20vh -10vw auto -10vw; height: 70vh; z-index: -1; pointer-events: none;
+    background: radial-gradient(40% 60% at 20% 20%, rgba(139,92,246,.22), transparent 70%),
+                radial-gradient(35% 55% at 80% 10%, rgba(200,255,46,.10), transparent 70%),
+                radial-gradient(30% 50% at 55% 40%, rgba(34,211,238,.08), transparent 70%);
+    filter: blur(20px);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  button:disabled { cursor: not-allowed; opacity: .45; }
+  a { color: inherit; }
+
+  /* top bar */
+  .top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+         background: linear-gradient(to bottom, rgba(7,8,11,.92), rgba(7,8,11,.6)); backdrop-filter: blur(14px);
+         border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; font: 700 18px/1 var(--display); letter-spacing: -.01em; white-space: nowrap; }
+  .brand .mark { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+                 background: conic-gradient(from 200deg, var(--lime), var(--cyan), var(--violet), var(--lime)); }
+  .brand .mark::after { content: ""; width: 0; height: 0; margin-left: 3px; border-left: 9px solid #07080b;
+                        border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+  .brand small { font: 500 11px/1 var(--font); color: var(--muted); padding: 4px 8px; border: 1px solid var(--line2); border-radius: 99px; }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 99px; font-size: 13px;
+          background: var(--panel-solid); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; max-width: 46vw;
+          overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .dot.busy { background: var(--lime); box-shadow: 0 0 10px var(--lime); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.bad { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  /* hero */
+  main { max-width: 1480px; margin: 0 auto; padding: 0 24px calc(var(--composer-h) + 60px); }
+  .hero { padding: 40px 0 22px; }
+  .hero h1 { margin: 0; font: 700 clamp(34px, 5vw, 64px)/1.02 var(--display); letter-spacing: -.035em; }
+  .hero h1 .grad { background: linear-gradient(92deg, var(--lime) 0%, var(--cyan) 45%, var(--violet) 100%);
+                   -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p { margin: 14px 0 0; color: var(--muted); font-size: 16px; max-width: 640px; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+  .stat { padding: 10px 14px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--line); }
+  .stat b { display: block; font: 700 18px/1.1 var(--display); }
+  .stat span { font-size: 12px; color: var(--muted); }
+
+  /* feed */
+  .feedhead { display: flex; align-items: baseline; gap: 12px; margin: 18px 0 14px; flex-wrap: wrap; }
+  .feedhead h2 { margin: 0; font: 600 13px/1 var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+  .tabs { display: flex; gap: 6px; margin-left: auto; }
+  .tab { padding: 6px 12px; border-radius: 99px; font-size: 13px; color: var(--muted); border: 1px solid transparent; }
+  .tab.on { color: var(--text); background: var(--panel-solid); border-color: var(--line2); }
+  .feed { columns: 4 300px; column-gap: 14px; }
+  .card { break-inside: avoid; margin: 0 0 14px; position: relative; border-radius: var(--radius); overflow: hidden;
+          background: var(--panel-solid); border: 1px solid var(--line); cursor: pointer; isolation: isolate;
+          transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
+  .card:hover { transform: translateY(-3px); border-color: var(--line2); box-shadow: 0 18px 40px -18px rgba(0,0,0,.8); }
+  .card video { display: block; width: 100%; height: auto; background: #000; }
+  .card .shade { position: absolute; inset: auto 0 0 0; padding: 40px 14px 12px; z-index: 2;
+                 background: linear-gradient(to top, rgba(0,0,0,.88), rgba(0,0,0,0)); opacity: 0; transition: opacity .25s; }
+  .card:hover .shade, .card:focus-visible .shade { opacity: 1; }
+  .card .shade p { margin: 0 0 6px; font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3;
+                   -webkit-box-orient: vertical; overflow: hidden; }
+  .badges { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 2; display: flex; gap: 6px; align-items: flex-start; }
+  .badge { padding: 4px 8px; border-radius: 8px; font: 600 11px/1 var(--font); letter-spacing: .02em;
+           background: rgba(0,0,0,.55); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); }
+  .badge.lime { color: var(--lime-ink); background: var(--lime); border-color: transparent; }
+  .badge.r { margin-left: auto; }
+  .src { width: 52px; height: 36px; object-fit: cover; border-radius: 7px; border: 2px solid rgba(255,255,255,.85);
+         box-shadow: 0 2px 8px rgba(0,0,0,.6); }
+  .meta { display: flex; gap: 10px; font-size: 12px; color: #c9ced8; }
+  .empty { padding: 60px 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line2); border-radius: var(--radius); }
+
+  /* pending (queued / rendering) cards */
+  .card.pending { cursor: default; display: none; aspect-ratio: var(--ar, 3/2); display: grid; place-items: center; text-align: center; padding: 18px;
+                  background: linear-gradient(110deg, #12141a 30%, #1b1e27 50%, #12141a 70%); background-size: 200% 100%;
+                  animation: shimmer 2.2s linear infinite; }
+  .card.pending:hover { transform: none; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .card.pending .stage { font: 600 15px/1.2 var(--display); }
+  .card.pending .sub { font-size: 12px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
+  .card.pending .bar { width: min(240px, 80%); height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); margin: 14px auto 0; overflow: hidden; }
+  .card.pending .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--lime), var(--cyan)); transition: width .6s; }
+  .card.pending .bg { position: absolute; inset: 0; z-index: -1; opacity: .18; background-size: cover; background-position: center; filter: blur(2px); }
+  .card.failed { animation: none; background: #1a1215; border-color: rgba(248,113,113,.3); }
+  /* activity rail: now rendering / up next / finished */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
+  .rail { position: sticky; top: 76px; max-height: calc(100vh - 76px - var(--composer-h) - 40px); overflow: auto;
+          display: flex; flex-direction: column; gap: 14px; padding-right: 2px; scrollbar-width: thin; }
+  .rail > * { flex: none; }
+  .box { background: var(--panel-solid); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .box h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font: 600 12px/1 var(--font); text-transform: uppercase;
+            letter-spacing: .12em; color: var(--muted); }
+  .box h3 .n { margin-left: auto; padding: 3px 8px; border-radius: 99px; background: rgba(255,255,255,.06); color: var(--text);
+               letter-spacing: 0; font-size: 12px; }
+  .now { position: relative; overflow: hidden; }
+  .now.on { border-color: rgba(200,255,46,.35); box-shadow: 0 0 0 1px rgba(200,255,46,.08), 0 20px 50px -25px rgba(200,255,46,.35); }
+  .now .idle { color: var(--dim); font-size: 14px; padding: 6px 0 2px; }
+  .nowtop { display: flex; gap: 12px; align-items: flex-start; }
+  .thumb { flex: none; width: 64px; height: 44px; border-radius: 9px; object-fit: cover; background: #0b0c10; border: 1px solid var(--line2);
+           display: grid; place-items: center; color: var(--dim); font: 600 10px/1 var(--font); overflow: hidden; }
+  .thumb.sm { width: 48px; height: 34px; border-radius: 7px; }
+  .nowtop p { margin: 0; font-size: 14px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .tag { padding: 2px 7px; border-radius: 6px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+  .tag.i2v { color: var(--lime-ink); background: var(--lime); border-color: transparent; font-weight: 600; }
+  .tag.cli { color: var(--cyan); }
+  .steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 14px 0 8px; }
+  .step { text-align: center; font-size: 10.5px; color: var(--dim); }
+  .step i { display: block; height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); margin-bottom: 6px; overflow: hidden; position: relative; }
+  .step i b { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--lime), var(--cyan)); transition: width .6s; }
+  .step.done { color: var(--muted); } .step.done i { background: var(--lime); }
+  .step.cur { color: var(--text); font-weight: 600; }
+  .step.cur i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+                       animation: sweep 1.3s linear infinite; }
+  @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .nowfoot { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .nowfoot b { color: var(--text); font-weight: 600; }
+  .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .list li { display: flex; gap: 10px; align-items: center; padding: 8px; margin: 0 -8px; border-radius: 10px; }
+  .list li.click { cursor: pointer; } .list li.click:hover { background: rgba(255,255,255,.04); }
+  .list .pos { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px/1 var(--font);
+               background: rgba(255,255,255,.06); color: var(--muted); }
+  .list .body { min-width: 0; flex: 1; }
+  .list .t { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list .s { font-size: 11.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .list .st { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .st.ok { background: rgba(74,222,128,.15); color: var(--ok); } .st.bad { background: rgba(248,113,113,.15); color: var(--bad); }
+  .list .empty2 { color: var(--dim); font-size: 13px; padding: 2px 0; }
+  .list li.failed .s { color: var(--bad); }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .rail { position: static; max-height: none; order: -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  }
+
+  /* composer */
+  .composer { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30;
+              width: min(980px, calc(100vw - 24px)); padding: 12px; border-radius: 24px; background: var(--panel); margin: 0;
+              backdrop-filter: blur(22px) saturate(1.3); border: 1px solid var(--line2);
+              box-shadow: 0 30px 80px -20px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06); }
+  .composer.drag { border-color: var(--lime); box-shadow: 0 0 0 4px rgba(200,255,46,.15), 0 30px 80px -20px rgba(0,0,0,.9); }
+  .crow { display: flex; gap: 10px; align-items: flex-start; }
+  .attach { flex: none; width: 64px; height: 64px; border-radius: 14px; border: 1.5px dashed var(--line2); display: grid; place-items: center;
+            color: var(--muted); position: relative; overflow: hidden; transition: border-color .2s, color .2s; }
+  .attach:hover { border-color: var(--lime); color: var(--lime); }
+  .attach svg { width: 24px; height: 24px; }
+  .attach img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .attach.has { border-style: solid; border-color: var(--lime); }
+  .attach .x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; display: none; place-items: center;
+               background: rgba(0,0,0,.75); color: #fff; font-size: 13px; line-height: 1; z-index: 2; }
+  .attach.has .x { display: grid; }
+  textarea { flex: 1; min-height: 64px; max-height: 180px; resize: none; padding: 10px 12px; border: 0; outline: 0; background: transparent;
+             color: var(--text); font: 15px/1.45 var(--font); }
+  textarea::placeholder { color: var(--dim); }
+  .go { flex: none; align-self: stretch; min-width: 132px; padding: 0 20px; border-radius: 16px; font: 700 15px/1 var(--display);
+        color: var(--lime-ink); background: linear-gradient(135deg, #e4ff7a, var(--lime) 45%, #9be600);
+        box-shadow: 0 8px 30px -6px rgba(200,255,46,.55), inset 0 1px 0 rgba(255,255,255,.5);
+        display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform .15s, box-shadow .2s; }
+  .go:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 36px -6px rgba(200,255,46,.75), inset 0 1px 0 rgba(255,255,255,.5); }
+  .go svg { width: 18px; height: 18px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgba(0,0,0,.35); border: 1px solid var(--line); }
+  .seg button { padding: 6px 10px; border-radius: 9px; font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .seg button.on { background: rgba(255,255,255,.1); color: var(--text); }
+  .seg button[hidden] { display: none; }
+  .ar { display: inline-block; border: 1.5px solid currentColor; border-radius: 2px; }
+  .ctl { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 12px; background: rgba(0,0,0,.35);
+         border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .ctl input[type=range] { width: 110px; accent-color: var(--lime); }
+  .ctl input[type=number] { width: 86px; background: transparent; border: 0; outline: 0; color: var(--text); font: inherit; }
+  .ctl b { color: var(--text); font-weight: 600; min-width: 30px; }
+  .ctl[hidden] { display: none; }
+  .hint { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .err { color: var(--bad); font-size: 13px; padding: 8px 4px 0; }
+  .err:empty { display: none; }
+
+  /* lightbox */
+  .lb { position: fixed; inset: 0; z-index: 50; display: none; place-items: center; padding: 24px;
+        background: rgba(3,4,6,.86); backdrop-filter: blur(10px); }
+  .lb.on { display: grid; }
+  .lbin { width: min(1200px, 100%); max-height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px;
+          background: var(--panel-solid); border: 1px solid var(--line2); border-radius: 22px; padding: 14px; overflow: auto; }
+  .lbin video { width: 100%; max-height: 78vh; border-radius: 14px; background: #000; }
+  .side { padding: 6px 6px 6px 0; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .side h3 { margin: 0; font: 600 12px/1 var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+  .side p { margin: 0; overflow-wrap: anywhere; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+  .kv span:nth-child(odd) { color: var(--muted); }
+  .side .srcbig { width: 100%; border-radius: 12px; border: 1px solid var(--line2); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 14px; border-radius: 12px;
+         background: rgba(255,255,255,.06); border: 1px solid var(--line2); font-size: 14px; text-decoration: none; }
+  .btn:hover { background: rgba(255,255,255,.1); }
+  .btn.lime { background: var(--lime); color: var(--lime-ink); border-color: transparent; font-weight: 600; }
+  .close { position: fixed; top: 16px; right: 18px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.08);
+           font-size: 22px; line-height: 1; }
+  .toast { position: fixed; left: 50%; bottom: calc(var(--composer-h) + 34px); transform: translate(-50%, 20px); opacity: 0; z-index: 40;
+           padding: 10px 16px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--line2); font-size: 14px;
+           transition: opacity .25s, transform .25s; pointer-events: none; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 820px) {
+    .top { padding: 12px 16px; }
+    .brand small, .pill.user { display: none; }
+    main { padding: 0 16px calc(var(--composer-h) + 120px); }
+    .hero { padding-top: 28px; }
+    .feed { columns: 2 160px; column-gap: 10px; }
+    .card { margin-bottom: 10px; }
+    .card .shade { opacity: 1; padding-top: 28px; }
+    .card .shade p { -webkit-line-clamp: 2; }
+    :root { --composer-h: 150px; }
+    .composer { padding: 10px; border-radius: 20px; }
+    .crow { flex-wrap: wrap; gap: 8px; }
+    .attach { width: 48px; height: 48px; border-radius: 12px; }
+    textarea { min-width: calc(100% - 60px); min-height: 48px; padding: 6px 8px; }
+    .go { width: 100%; min-height: 44px; }
+    .controls { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-top: 8px; padding-top: 8px;
+                mask-image: linear-gradient(to right, #000 85%, transparent); }
+    .controls::-webkit-scrollbar { display: none; }
+    .seg, .ctl { flex: none; }
+    .hint { display: none; }
+    .lbin { grid-template-columns: 1fr; }
+  }
+  @media (min-width: 1101px) {
+    .composer { --cw: calc(min(1480px, 100vw) - 48px - 384px);
+                left: calc((100vw - min(1480px, 100vw)) / 2 + 24px + var(--cw) / 2); width: min(980px, var(--cw)); }
+    .toast { left: calc((100vw - min(1480px, 100vw)) / 2 + 24px + (min(1480px, 100vw) - 432px) / 2); }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span>LTX Studio <small>LTX-2.5 · NVFP4 · DGX Spark</small></div>
+  <div class="spacer"></div>
+  <span class="pill" id="state"><span class="dot" id="stateDot"></span><span id="stateText">Connecting…</span></span>
+  <span class="pill user" id="who"></span>
+</header>
+
 <main>
-  <header>
-    <h1>LTX Video Studio</h1>
-    <span class="who" id="who"></span>
-  </header>
-  <div class="banner" id="banner">Checking machine status…</div>
+  <section class="hero">
+    <h1>Turn words &amp; images<br>into <span class="grad">moving pictures.</span></h1>
+    <p>Describe a shot, or drop in a photo to bring it to life. Every clip comes with synchronized sound, rendered privately on your own DGX Spark.</p>
+    <div class="stats" id="stats"></div>
+  </section>
 
-  <div class="grid">
-    <div class="card">
-      <h2>New video</h2>
-      <textarea id="prompt" placeholder="Describe the shot: subject, action, setting, lighting, camera movement and any sounds. Example: A red fox trots through fresh snow in a birch forest at golden hour, soft wind sound, slow tracking shot."></textarea>
-      <div class="row">
-        <label>Size
-          <select id="size">
-            <option value="768x512">768 × 512 landscape (fast)</option>
-            <option value="512x768">512 × 768 portrait (fast)</option>
-            <option value="1024x576">1024 × 576 landscape</option>
-            <option value="576x1024">576 × 1024 portrait</option>
-            <option value="1280x704">1280 × 704 landscape</option>
-            <option value="704x1280">704 × 1280 portrait</option>
-            <option value="1536x1024">1536 × 1024 (slow)</option>
-          </select>
-        </label>
-        <label>Length
-          <select id="frames">
-            <option value="49">2 seconds</option>
-            <option value="97" selected>4 seconds</option>
-            <option value="121">5 seconds</option>
-            <option value="193">8 seconds</option>
-          </select>
-        </label>
-        <label>Seed (optional)
-          <input id="seed" type="number" min="0" placeholder="random">
-        </label>
-      </div>
-      <button id="go">Generate</button>
-      <div class="err" id="err"></div>
-    </div>
-
-    <div class="card">
-      <h2>Now running</h2>
-      <div id="live" class="muted">Idle.</div>
-      <h2 style="margin-top:16px">Recent requests</h2>
-      <ul class="jobs" id="jobs"><li class="muted">None yet.</li></ul>
+  <div class="layout">
+  <div class="col">
+  <div class="feedhead">
+    <h2>Your generations</h2>
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-filter="all">All</button>
+      <button class="tab" data-filter="t2v">Text → video</button>
+      <button class="tab" data-filter="i2v">Image → video</button>
     </div>
   </div>
-
-  <section>
-    <h2>Videos</h2>
-    <div class="gallery" id="gallery"><span class="muted">Loading…</span></div>
-  </section>
+  <div id="feed" class="feed"><div class="empty">Loading…</div></div>
+  </div>
+  <aside class="rail" aria-label="Activity">
+    <section class="box now" id="nowBox"><h3>Now rendering</h3><div id="now"><div class="idle">Nothing rendering.</div></div></section>
+    <section class="box"><h3>Up next <span class="n" id="qn">0</span></h3><ul class="list" id="queue"></ul></section>
+    <section class="box"><h3>Finished <span class="n" id="dn">0</span></h3><ul class="list" id="done"></ul></section>
+  </aside>
+  </div>
 </main>
+
+<form class="composer" id="composer" autocomplete="off">
+  <div class="crow">
+    <button type="button" class="attach" id="attach" title="Animate an image (PNG, JPEG or WebP)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4.5-4.5L6 21"/></svg>
+      <span class="x" id="clearImg" title="Remove image">×</span>
+    </button>
+    <input id="file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+    <textarea id="prompt" rows="2" placeholder="Describe the shot: subject, action, setting, light, camera move and sound…"></textarea>
+    <button type="submit" class="go" id="go">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.6L19.5 9l-5.7 1.5L12 16l-1.8-5.5L4.5 9l5.7-1.4z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+      Generate
+    </button>
+  </div>
+  <div class="controls">
+    <div class="seg" id="aspect" aria-label="Aspect ratio">
+      <button type="button" data-v="match" hidden><span class="ar" style="width:12px;height:10px;border-style:dashed"></span>Match image</button>
+      <button type="button" data-v="landscape" class="on"><span class="ar" style="width:15px;height:10px"></span>Landscape</button>
+      <button type="button" data-v="portrait"><span class="ar" style="width:10px;height:15px"></span>Portrait</button>
+      <button type="button" data-v="square"><span class="ar" style="width:12px;height:12px"></span>Square</button>
+    </div>
+    <div class="seg" id="tier" aria-label="Quality">
+      <button type="button" data-v="fast" class="on">Fast</button>
+      <button type="button" data-v="hd">HD</button>
+      <button type="button" data-v="max">Max</button>
+    </div>
+    <div class="seg" id="frames" aria-label="Duration">
+      <button type="button" data-v="49">2s</button>
+      <button type="button" data-v="97" class="on">4s</button>
+      <button type="button" data-v="121">5s</button>
+      <button type="button" data-v="193">8s</button>
+    </div>
+    <label class="ctl" id="strengthCtl" hidden title="1.0 = the first frame is exactly your image; lower lets the model drift">
+      Image strength <input id="strength" type="range" min="0.3" max="1" step="0.05" value="1"><b id="strengthVal">1.00</b>
+    </label>
+    <label class="ctl" title="Same seed + same settings = same video">Seed <input id="seed" type="number" min="0" placeholder="random"></label>
+    <span class="hint">Ctrl/⌘ + Enter to generate · drop or paste an image anywhere</span>
+  </div>
+  <div class="err" id="err"></div>
+</form>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Video viewer">
+  <button class="close" id="lbClose" aria-label="Close">×</button>
+  <div class="lbin">
+    <video id="lbVideo" controls loop playsinline></video>
+    <div class="side" id="lbSide"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const STAGE = {starting: "Starting", text_encoder: "Reading the prompt", denoise_stage1: "Generating (pass 1 of 2)",
-               upsample: "Upscaling", denoise_stage2: "Refining (pass 2 of 2)", decode: "Rendering video and audio"};
-let lastVideos = "";
+const STAGE = {starting: "Warming up", text_encoder: "Reading your prompt", denoise_stage1: "Dreaming it up · pass 1",
+               upsample: "Upscaling", denoise_stage2: "Refining details · pass 2", decode: "Rendering video + sound"};
+const ORDER = ["starting", "text_encoder", "denoise_stage1", "upsample", "denoise_stage2", "decode"];
+// Output sizes per quality tier and aspect (multiples of 64; pass 1 renders at half size).
+const SIZES = {
+  fast: {landscape: "768x512", portrait: "512x768", square: "640x640"},
+  hd:   {landscape: "1280x704", portrait: "704x1280", square: "768x768"},
+  max:  {landscape: "1536x1024", portrait: "1024x1536", square: "1024x1024"},
+};
+const MAX_IMAGE_MB = 16;
+const PROMPT_T2V = "Describe the shot: subject, action, setting, light, camera move and sound…";
+const PROMPT_I2V = "How should it move? Describe the motion, camera and sound…";
+const st = {aspect: "landscape", tier: "fast", frames: 97, image: null, filter: "all"};
+let videos = [], lastVideosKey = "";
 
-async function refresh() {
-  try {
-    const s = await (await fetch("api/status")).json();
-    $("who").textContent = "Signed in via Tailscale as " + s.user;
-    const b = $("banner");
-    if (s.can_run) {
-      b.className = "banner ok";
-      b.textContent = `Ready: ${s.mem_free_gib} GiB of memory free.`;
-    } else {
-      b.className = "banner warn";
-      b.textContent = `Can't generate right now: only ${s.mem_free_gib} GiB of memory free (needs ${s.min_free_gib}).` +
-        (s.llm_running ? ` The LLM server (${esc(s.llm_container)}) is running and holding the memory. Ask the admin to stop it.` : "");
-    }
-    $("go").disabled = !s.can_run;
-
-    if (s.live) {
-      const pct = s.live.steps ? Math.round(100 * s.live.step / s.live.steps) : null;
-      $("live").innerHTML = `<div><b>${esc(STAGE[s.live.stage] || s.live.stage)}</b>${pct !== null ? ` · ${pct}%` : ""}</div>
-        <div class="bar"><div style="width:${pct ?? 0}%"></div></div>
-        <div class="muted">${s.live.elapsed}s elapsed · ${s.live.gpu_mem_gib} GiB GPU memory</div>`;
-    } else {
-      $("live").textContent = "Idle.";
-    }
-
-    $("jobs").innerHTML = s.jobs.length ? s.jobs.map((j) => `<li>
-        <span class="chip ${j.status}">${j.status}</span><span class="muted">${esc(j.size)} · ${(j.frames - 1) / 24}s · ${esc(j.user)}</span>
-        <div class="trunc">${esc(j.prompt)}</div>
-        ${j.error ? `<div class="err">${esc(j.error)}</div>` : ""}</li>`).join("")
-      : '<li class="muted">None yet.</li>';
-
-    const v = await (await fetch("api/videos")).json();
-    const key = JSON.stringify(v.map((x) => x.file));
-    if (key !== lastVideos) {
-      lastVideos = key;
-      $("gallery").innerHTML = v.length ? v.map((x) => `<div class="vid">
-          <video src="videos/${encodeURIComponent(x.file)}" controls preload="metadata"></video>
-          <div class="meta"><div class="prompt">${esc(x.prompt || x.file)}</div>
-          <div class="muted">${x.width ? `${x.width}×${x.height} · ` : ""}${x.video_seconds ? `${x.video_seconds.toFixed(1)}s · ` : ""}${x.duration_s ? `made in ${Math.round(x.duration_s)}s · ` : ""}${x.size_mb} MB ·
-          <a href="videos/${encodeURIComponent(x.file)}" download>download</a></div></div></div>`).join("")
-        : '<span class="muted">No videos yet.</span>';
-    }
-  } catch (e) {
-    $("banner").className = "banner warn";
-    $("banner").textContent = "Lost contact with the server. Retrying…";
-  }
+/* segmented controls */
+function seg(id, key, cast = (v) => v) {
+  $(id).addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-v]"); if (!b) return;
+    [...$(id).children].forEach((x) => x.classList.toggle("on", x === b));
+    st[key] = cast(b.dataset.v);
+  });
 }
+seg("aspect", "aspect"); seg("tier", "tier"); seg("frames", "frames", Number);
+function setSeg(id, v) { [...$(id).children].forEach((x) => x.classList.toggle("on", x.dataset.v === String(v))); }
 
-$("go").onclick = async () => {
+/* image attach */
+function setImage(file) {
   $("err").textContent = "";
-  const body = {prompt: $("prompt").value, size: $("size").value, frames: +$("frames").value, seed: $("seed").value};
+  if (!file) return;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { $("err").textContent = "Use a PNG, JPEG or WebP image."; return; }
+  if (file.size > MAX_IMAGE_MB * 2**20) { $("err").textContent = `That image is over ${MAX_IMAGE_MB} MB.`; return; }
+  const r = new FileReader();
+  r.onload = () => {
+    st.image = r.result;
+    const a = $("attach");
+    a.querySelector("img")?.remove();
+    const img = new Image(); img.src = st.image; img.alt = ""; a.prepend(img);
+    a.classList.add("has"); a.title = `${file.name || "image"}: animating from this image`;
+    $("strengthCtl").hidden = false;
+    $("aspect").querySelector('[data-v="match"]').hidden = false;
+    st.aspect = "match"; setSeg("aspect", "match");
+    $("prompt").placeholder = PROMPT_I2V;
+    toast("Image attached: it becomes the first frame");
+  };
+  r.readAsDataURL(file);
+}
+function clearImage() {
+  st.image = null; $("file").value = "";
+  const a = $("attach"); a.querySelector("img")?.remove(); a.classList.remove("has"); a.title = "Animate an image (PNG, JPEG or WebP)";
+  $("strengthCtl").hidden = true;
+  $("aspect").querySelector('[data-v="match"]').hidden = true;
+  if (st.aspect === "match") { st.aspect = "landscape"; setSeg("aspect", "landscape"); }
+  $("prompt").placeholder = PROMPT_T2V;
+}
+$("attach").onclick = (e) => { if (e.target.id === "clearImg") { e.stopPropagation(); clearImage(); } else $("file").click(); };
+$("file").onchange = (e) => setImage(e.target.files[0]);
+$("strength").oninput = (e) => { $("strengthVal").textContent = (+e.target.value).toFixed(2); };
+// drop or paste an image anywhere on the page
+let dragDepth = 0;
+addEventListener("dragenter", (e) => { if ([...e.dataTransfer.types].includes("Files")) { dragDepth++; $("composer").classList.add("drag"); } });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; $("composer").classList.remove("drag"); } });
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; $("composer").classList.remove("drag"); setImage(e.dataTransfer.files[0]); });
+addEventListener("paste", (e) => { const f = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith("image/")); if (f) setImage(f); });
+
+/* composer */
+const ta = $("prompt");
+ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 180) + "px"; });
+ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $("composer").requestSubmit(); } });
+$("composer").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("err").textContent = "";
+  const prompt = ta.value.trim();
+  if (!prompt) { $("err").textContent = st.image ? "Describe how the image should move." : "Describe the shot you want."; ta.focus(); return; }
+  const size = st.aspect === "match" ? `auto:${st.tier}` : SIZES[st.tier][st.aspect];
+  const body = {prompt, size, frames: st.frames, seed: $("seed").value};
+  if (st.image) Object.assign(body, {image: st.image, strength: +$("strength").value});
   $("go").disabled = true;
   try {
     const r = await fetch("api/generate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) $("err").textContent = j.error || "Request failed.";
-  } catch (e) {
-    $("err").textContent = "Couldn't reach the server.";
-  }
+    else toast(st.image ? "Queued: animating your image" : "Queued: your clip is on its way");
+  } catch { $("err").textContent = "Couldn't reach the studio server."; }
   refresh();
-};
+});
 
+/* rendering */
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2600); }
+const arOf = (size) => { const [w, h] = String(size).split("x").map(Number); return w && h ? `${w}/${h}` : "3/2"; };
+const fmtS = (s) => s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`;
+
+const STEPS = [["text_encoder", "Prompt"], ["denoise_stage1", "Pass 1"], ["upsample", "Upscale"], ["denoise_stage2", "Pass 2"], ["decode", "Render"]];
+const ago = (t, now) => { const d = Math.max(0, now - t); return d < 60 ? "just now" : d < 3600 ? `${Math.round(d / 60)} min ago` : d < 86400 ? `${Math.round(d / 3600)} h ago` : `${Math.round(d / 86400)} d ago`; };
+const who = (u) => (u || "").split("@")[0].split(" ")[0] || "someone";
+const thumbHtml = (img, cls = "") => img ? `<img class="thumb ${cls}" src="uploads/${encodeURIComponent(img)}" alt="">` : `<span class="thumb ${cls}">TEXT</span>`;
+
+// Typical render time for a size/length: median of matching finished jobs, else a fit to the benchmark sweep.
+function typical(w, h, frames, recent) {
+  const m = recent.filter((r) => r.status === "ok" && r.width == w && r.height == h && r.frames == frames && r.duration_s).map((r) => r.duration_s).sort((a, b) => a - b);
+  if (m.length) return m[Math.floor(m.length / 2)];
+  return 35 + 0.9e-6 * w * h * frames;
+}
+
+function renderActivity(s) {
+  const now = s.now || Date.now() / 1000, live = s.live, lj = s.live_job;
+  const webRun = s.jobs.find((j) => j.status === "running");
+  // ── now rendering ──
+  let remaining = 0;
+  if (live || webRun) {
+    const [w, h] = webRun ? webRun.size.split("x").map(Number) : [lj?.width, lj?.height];
+    const frames = webRun ? webRun.frames : lj?.frames;
+    const prompt = webRun ? webRun.prompt : lj?.prompt;
+    const mode = webRun ? webRun.mode : lj?.mode;
+    const src = webRun ? "webui" : (lj?.source || "cli");
+    const user = webRun ? webRun.user : lj?.user;
+    const ci = live ? STEPS.findIndex(([k]) => k === live.stage) : -1;
+    const frac = live && live.steps ? live.step / live.steps : 0;
+    const elapsed = live ? live.elapsed : 0;
+    const est = typical(w, h, frames, s.recent);
+    remaining = Math.max(5, est - elapsed);
+    $("nowBox").classList.add("on");
+    $("now").innerHTML = `
+      <div class="nowtop">${thumbHtml(webRun?.image)}<div style="min-width:0">
+        <p>${esc(prompt || "…")}</p>
+        <div class="tags">${mode === "i2v" ? '<span class="tag i2v">IMG→VID</span>' : ""}<span class="tag">${w}×${h}</span><span class="tag">${(frames - 1) / 24}s</span>
+          <span class="tag ${src === "cli" ? "cli" : ""}">${src === "cli" ? "command line" : esc(who(user))}</span></div></div></div>
+      <div class="steps">${STEPS.map(([k, label], i) => {
+        const cls = i < ci ? "done" : i === ci ? "cur" : "";
+        const fill = i < ci ? 100 : i === ci ? (k.startsWith("denoise") ? Math.round(frac * 100) : 50) : 0;
+        return `<div class="step ${cls}"><i><b style="width:${fill}%"></b></i>${label}</div>`; }).join("")}</div>
+      <div class="nowfoot"><span>${live ? esc(STAGE[live.stage] || live.stage) : "Starting"}${live && live.steps ? ` · step ${live.step}/${live.steps}` : ""}</span>
+        <span><b>${fmtS(elapsed)}</b> elapsed · ~${fmtS(remaining)} left</span></div>`;
+  } else {
+    $("nowBox").classList.remove("on");
+    $("now").innerHTML = `<div class="idle">Nothing rendering. ${s.can_run ? "Ready for your next clip." : "Waiting for free memory."}</div>`;
+  }
+  // ── up next ──
+  const queued = s.jobs.filter((j) => j.status === "queued").sort((a, b) => a.queued - b.queued);
+  $("qn").textContent = queued.length;
+  let wait = remaining;
+  $("queue").innerHTML = queued.length ? queued.map((j, i) => {
+    const [w, h] = j.size.split("x").map(Number);
+    const startIn = wait; wait += typical(w, h, j.frames, s.recent);
+    return `<li><span class="pos">${i + 1}</span>${thumbHtml(j.image, "sm")}<div class="body"><div class="t">${esc(j.prompt)}</div>
+      <div class="s">${j.mode === "i2v" ? "image → video · " : ""}${w}×${h} · ${(j.frames - 1) / 24}s · ${esc(who(j.user))} · starts in ~${fmtS(startIn)}</div></div></li>`;
+  }).join("") : '<li class="empty2">Queue is empty.</li>';
+  // ── finished: this session's failures (with reasons) + job history ──
+  const fails = s.jobs.filter((j) => j.status === "failed").map((j) => ({status: "failed", prompt: j.prompt, error: j.error, end: j.finished,
+    image: j.image, user: j.user, source: "webui", mode: j.mode}));
+  const fin = [...fails, ...s.recent].sort((a, b) => (b.end || 0) - (a.end || 0)).slice(0, 12);
+  $("dn").textContent = s.recent.filter((r) => r.status === "ok").length + (s.recent.length >= 15 ? "+" : "");
+  $("done").innerHTML = fin.length ? fin.map((r) => {
+    const ok = r.status === "ok";
+    const meta = ok ? `${r.width}×${r.height} · ${(r.frames - 1) / 24}s · made in ${fmtS(r.duration_s || 0)} · ${ago(r.end, now)}`
+                    : `${esc(r.error || "failed")} · ${ago(r.end || now, now)}`;
+    return `<li class="${ok && r.file ? "click" : ""} ${ok ? "" : "failed"}" ${ok && r.file ? `data-file="${esc(r.file)}"` : ""}>
+      <span class="st ${ok ? "ok" : "bad"}">${ok ? "✓" : "!"}</span>${thumbHtml(r.image, "sm")}
+      <div class="body"><div class="t">${esc(r.prompt || "(no prompt)")}</div><div class="s">${r.mode === "i2v" ? "image → video · " : ""}${meta} · ${r.source === "cli" ? "CLI" : esc(who(r.user))}</div></div></li>`;
+  }).join("") : '<li class="empty2">Nothing finished yet.</li>';
+}
+$("done").addEventListener("click", (e) => {
+  const li = e.target.closest("li[data-file]"); if (!li) return;
+  const v = videos.find((x) => x.file === li.dataset.file); if (v) openLb(v);
+});
+
+function renderFeed() {
+  const list = videos.filter((v) => st.filter === "all" || (st.filter === "i2v") === !!v.image);
+  $("feed").innerHTML = list.length ? list.map((v) => `
+    <article class="card" tabindex="0" data-i="${videos.indexOf(v)}">
+      <video src="videos/${encodeURIComponent(v.file)}#t=0.1" muted loop playsinline preload="metadata"
+             ${v.width ? `width="${v.width}" height="${v.height}"` : ""}></video>
+      <div class="badges">
+        ${v.image ? `<img class="src" src="uploads/${encodeURIComponent(v.image)}" alt="source image">` : ""}
+        ${v.image ? '<span class="badge lime">IMG → VID</span>' : ""}
+        ${v.video_seconds ? `<span class="badge r">${v.video_seconds.toFixed(0)}s</span>` : ""}
+      </div>
+      <div class="shade"><p>${esc(v.prompt || v.file)}</p>
+        <div class="meta">${v.width ? `<span>${v.width}×${v.height}</span>` : ""}${v.duration_s ? `<span>made in ${fmtS(v.duration_s)}</span>` : ""}<span>${v.size_mb} MB</span></div>
+      </div>
+    </article>`).join("")
+    : `<div class="empty">${st.filter === "i2v" ? "No image-to-video clips yet. Attach an image below to make one." : "Nothing here yet. Describe a shot below and hit Generate."}</div>`;
+}
+$("feed").addEventListener("mouseover", (e) => { const v = e.target.closest(".card")?.querySelector("video"); if (v && v.paused) v.play().catch(() => {}); });
+$("feed").addEventListener("mouseout", (e) => {
+  const c = e.target.closest(".card"); if (!c || c.contains(e.relatedTarget)) return;
+  const v = c.querySelector("video"); if (v) { v.pause(); v.currentTime = 0.1; }
+});
+$("feed").addEventListener("click", (e) => { const c = e.target.closest(".card[data-i]"); if (c) openLb(videos[+c.dataset.i]); });
+$("feed").addEventListener("keydown", (e) => { if (e.key === "Enter") { const c = e.target.closest(".card[data-i]"); if (c) openLb(videos[+c.dataset.i]); } });
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === b));
+  st.filter = b.dataset.filter; renderFeed();
+});
+
+/* lightbox */
+function openLb(v) {
+  $("lbVideo").src = `videos/${encodeURIComponent(v.file)}`;
+  $("lbSide").innerHTML = `
+    <h3>Prompt</h3><p>${esc(v.prompt || "(no prompt recorded)")}</p>
+    ${v.image ? `<h3>Source image</h3><img class="srcbig" src="uploads/${encodeURIComponent(v.image)}" alt="">` : ""}
+    <div class="kv">
+      ${v.width ? `<span>Resolution</span><span>${v.width} × ${v.height}</span>` : ""}
+      ${v.video_seconds ? `<span>Length</span><span>${v.video_seconds.toFixed(1)} s · 24 fps · with audio</span>` : ""}
+      ${v.duration_s ? `<span>Render time</span><span>${fmtS(v.duration_s)}</span>` : ""}
+      <span>File</span><span>${v.size_mb} MB</span>
+    </div>
+    <button class="btn" id="reuse">Reuse prompt</button>
+    ${v.image ? '<button class="btn" id="reanimate">Animate this image again</button>' : ""}
+    <a class="btn lime" href="videos/${encodeURIComponent(v.file)}" download>Download MP4</a>`;
+  $("reuse").onclick = () => { ta.value = v.prompt || ""; ta.dispatchEvent(new Event("input")); closeLb(); ta.focus(); };
+  if (v.image) $("reanimate").onclick = async () => {
+    const blob = await (await fetch(`uploads/${encodeURIComponent(v.image)}`)).blob();
+    setImage(new File([blob], v.image, {type: blob.type}));
+    ta.value = v.prompt || ""; ta.dispatchEvent(new Event("input")); closeLb(); ta.focus();
+  };
+  $("lb").classList.add("on");
+  $("lbVideo").play().catch(() => {});
+}
+function closeLb() { $("lb").classList.remove("on"); $("lbVideo").pause(); $("lbVideo").removeAttribute("src"); $("lbVideo").load(); }
+$("lbClose").onclick = closeLb;
+$("lb").addEventListener("click", (e) => { if (e.target === $("lb")) closeLb(); });
+addEventListener("keydown", (e) => { if (e.key === "Escape" && $("lb").classList.contains("on")) closeLb(); });
+
+/* polling */
+async function refresh() {
+  try {
+    const s = await (await fetch("api/status")).json();
+    $("who").textContent = s.user;
+    $("who").title = "Signed in via Tailscale";
+    const running = s.jobs.some((j) => j.status === "running") || !!s.live;
+    const dot = $("stateDot"), txt = $("stateText");
+    if (!s.can_run) {
+      dot.className = "dot bad";
+      txt.textContent = s.llm_running ? `Busy: the LLM (${s.llm_container}) is using the memory` : `Low memory: ${s.mem_free_gib} GiB free`;
+      $("state").title = `Needs ${s.min_free_gib} GiB free to start a job.`;
+    } else if (running) { dot.className = "dot busy"; txt.textContent = "Rendering"; $("state").title = ""; }
+    else { dot.className = "dot ok"; txt.textContent = `Ready · ${Math.round(s.mem_free_gib)} GiB free`; $("state").title = ""; }
+    $("go").disabled = !s.can_run;
+    $("go").title = s.can_run ? "" : "The machine doesn't have enough free memory right now.";
+    renderActivity(s);
+
+    const v = await (await fetch("api/videos")).json();
+    const key = JSON.stringify(v.map((x) => [x.file, x.image]));
+    if (key !== lastVideosKey) {
+      lastVideosKey = key; videos = v; renderFeed();
+      const secs = v.reduce((a, x) => a + (x.video_seconds || 0), 0);
+      $("stats").innerHTML = `
+        <div class="stat"><b>${v.length}</b><span>clips</span></div>
+        <div class="stat"><b>${fmtS(secs)}</b><span>of footage</span></div>
+        <div class="stat"><b>${v.filter((x) => x.image).length}</b><span>from images</span></div>
+        <div class="stat"><b>~1 min</b><span>for a 4 s clip</span></div>`;
+    }
+  } catch {
+    $("stateDot").className = "dot bad"; $("stateText").textContent = "Reconnecting…";
+  }
+}
 refresh();
 setInterval(refresh, 2000);
 </script>

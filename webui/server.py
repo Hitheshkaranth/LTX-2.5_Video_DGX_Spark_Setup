@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""LTX-2.5 web UI: queue text-to-video jobs and browse/play the results.
+"""LTX-2.5 web UI: queue text-to-video and image-to-video jobs and browse/play the results.
 
 Binds to 127.0.0.1 only; the tailnet reaches it through `tailscale serve`, which
 also supplies the Tailscale-User-Login header used to tag who queued a job.
 Jobs run one at a time through ../run.sh, so they show up in the Grafana
 "LTX-2.5 Video Generation" dashboard like any CLI run.
 """
+import base64
 import http.server
 import json
 import mimetypes
@@ -13,14 +14,21 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import uuid
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import imageinfo  # noqa: E402
+
+# LTX_ROOT / LTX_RUN_SCRIPT let a test instance run against a scratch dir and a stub pipeline.
+ROOT = Path(os.environ.get("LTX_ROOT", Path(__file__).resolve().parent.parent))
+RUN_SCRIPT = os.environ.get("LTX_RUN_SCRIPT", str(Path(__file__).resolve().parent.parent / "run.sh"))
 OUTPUTS = ROOT / "outputs"
+UPLOADS = ROOT / "uploads"  # conditioning images for image-to-video
 CURRENT = ROOT / "logs" / "current.json"
 WEBUI_STATE = ROOT / "logs" / "webui_state.json"  # read by ltx_exporter.py for Grafana
 HISTORY = ROOT / "logs" / "jobs.jsonl"
@@ -36,7 +44,9 @@ _whois_cache = {}
 
 # Final output sizes; the distilled pipeline renders stage 1 at half size, so both
 # dimensions must be multiples of 64.
-SIZES = {"768x512", "512x768", "1024x576", "576x1024", "1280x704", "704x1280", "1536x1024"}
+SIZES = imageinfo.SIZES | {"768x512", "512x768", "1024x576", "576x1024", "1280x704", "704x1280", "1536x1024"}
+MAX_IMAGE_BYTES = 16 * 2**20
+MAX_BODY_BYTES = MAX_IMAGE_BYTES * 4 // 3 + 64 * 1024  # base64 overhead + JSON
 FRAMES = {49, 97, 121, 193}  # 2s, 4s, 5s, 8s at 24 fps (must be 8k+1)
 # Observed peak ~29 GiB above idle; keep headroom. Override with LTX_MIN_FREE_GIB.
 MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "40")) * 2**30
@@ -81,10 +91,13 @@ def worker():
                 continue
             job.update(status="running", started=time.time())
         w, h = job["size"].split("x")
-        cmd = [str(ROOT / "run.sh"), job["prompt"], str(OUTPUTS / job["file"]),
+        cmd = [RUN_SCRIPT, job["prompt"], str(OUTPUTS / job["file"]),
                "--width", w, "--height", h, "--num-frames", str(job["frames"])]
         if job.get("seed") is not None:
             cmd += ["--seed", str(job["seed"])]
+        if job.get("image"):
+            # Condition frame 0 on the uploaded still (image-to-video).
+            cmd += ["--image", str(UPLOADS / job["image"]), "0", str(job["strength"])]
         log = ROOT / "logs" / "webui" / f"{job['id']}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         env = os.environ | {"LTX_JOB_USER": job["user"], "LTX_JOB_SOURCE": "webui"}
@@ -118,7 +131,7 @@ def live_progress():
         cur = json.loads(CURRENT.read_text())
     except (OSError, ValueError):
         return None
-    if not cur.get("running"):
+    if not cur.get("running") or not Path(f"/proc/{cur.get('pid')}").exists():
         return None
     return {k: cur.get(k) for k in ("stage", "step", "steps", "output")} | {
         "elapsed": round(time.time() - cur["start"], 1), "gpu_mem_gib": round(cur.get("gpu_mem_bytes", 0) / 2**30, 1)}
@@ -138,6 +151,39 @@ def history_by_file():
     return out
 
 
+def recent_history(n=15):
+    """Last n finished jobs from any entry point (web or CLI), newest first, for the activity rail."""
+    rows = []
+    try:
+        with open(HISTORY) as f:
+            lines = f.readlines()[-n:]
+    except OSError:
+        return rows
+    for line in reversed(lines):
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        name = Path(r.get("output", "")).name
+        rows.append({"file": name if (OUTPUTS / name).is_file() else None, "status": r.get("status"),
+                     "prompt": r.get("prompt", ""), "user": r.get("user", ""), "source": r.get("source", "cli"),
+                     "mode": r.get("mode", "t2v"), "image": r.get("image") if r.get("image") and (UPLOADS / r["image"]).is_file() else None,
+                     "width": r.get("width"), "height": r.get("height"), "frames": r.get("frames"),
+                     "duration_s": r.get("duration_s"), "end": r.get("end")})
+    return rows
+
+
+def live_job():
+    """The running job as ltx_job.py sees it (covers CLI runs the web queue doesn't know about)."""
+    try:
+        cur = json.loads(CURRENT.read_text())
+    except (OSError, ValueError):
+        return None
+    if not cur.get("running") or not Path(f"/proc/{cur.get('pid')}").exists():
+        return None
+    return {k: cur.get(k) for k in ("prompt", "user", "source", "mode", "width", "height", "frames", "start")}
+
+
 def list_videos():
     hist = history_by_file()
     vids = []
@@ -145,6 +191,7 @@ def list_videos():
         r = hist.get(p.name, {})
         vids.append({"file": p.name, "size_mb": round(p.stat().st_size / 2**20, 1), "mtime": p.stat().st_mtime,
                      "prompt": r.get("prompt", ""), "duration_s": r.get("duration_s"),
+                     "image": r.get("image") if r.get("image") and (UPLOADS / r["image"]).is_file() else None,
                      "width": r.get("width"), "height": r.get("height"), "video_seconds": r.get("video_seconds")})
     return vids
 
@@ -188,17 +235,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             free = mem_available()
             self.send_json({"jobs": q[::-1], "live": live_progress(), "mem_free_gib": round(free / 2**30, 1),
                             "can_run": free >= MIN_FREE_BYTES, "llm_running": llm_running(), "llm_container": LLM_CONTAINER,
-                            "min_free_gib": MIN_FREE_BYTES // 2**30, "user": self.user()})
+                            "min_free_gib": MIN_FREE_BYTES // 2**30, "user": self.user(),
+                            "now": time.time(), "live_job": live_job(), "recent": recent_history()})
         elif path == "/api/videos":
             self.send_json(list_videos())
         elif path.startswith("/videos/"):
-            self.send_video(unquote(path[len("/videos/"):]))
+            self.send_file(OUTPUTS, unquote(path[len("/videos/"):]))
+        elif path.startswith("/uploads/"):
+            self.send_file(UPLOADS, unquote(path[len("/uploads/"):]))
         else:
             self.send_error(404)
 
-    def send_video(self, name):
-        p = (OUTPUTS / name).resolve()
-        if p.parent != OUTPUTS.resolve() or not p.is_file():
+    def send_file(self, folder, name):
+        p = (folder / name).resolve()
+        if p.parent != folder.resolve() or not p.is_file():
             self.send_error(404)
             return
         size = p.stat().st_size
@@ -229,13 +279,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if urlparse(self.path).path != "/api/generate":
             self.send_error(404)
             return
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > MAX_BODY_BYTES:
+            self.send_json({"error": f"Image too large (max {MAX_IMAGE_BYTES // 2**20} MB)."}, 413)
+            return
         try:
-            req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0))
+            req = json.loads(self.rfile.read(length))
             prompt = str(req["prompt"]).strip()
             size, frames = str(req["size"]), int(req["frames"])
             seed = int(req["seed"]) if str(req.get("seed", "")).strip() else None
+            strength = float(req.get("strength", 1.0))
+            image_data = req.get("image") or ""
         except (ValueError, KeyError, TypeError):
             self.send_json({"error": "bad request"}, 400)
+            return
+        image = None
+        if image_data:
+            try:  # accepts a data: URL or bare base64
+                raw = base64.b64decode(image_data.split(",", 1)[-1], validate=True)
+            except ValueError:
+                self.send_json({"error": "Image is not valid base64."}, 400)
+                return
+            info = imageinfo.sniff(raw)
+            if len(raw) > MAX_IMAGE_BYTES or not info:
+                self.send_json({"error": "Image must be a PNG, JPEG or WebP up to "
+                                         f"{MAX_IMAGE_BYTES // 2**20} MB."}, 400)
+                return
+            if not 0.3 <= strength <= 1.0:
+                self.send_json({"error": "Image strength must be between 0.3 and 1.0."}, 400)
+                return
+            image = {"kind": info[0], "width": info[1], "height": info[2], "raw": raw}
+            if size.startswith("auto"):
+                tier = size.partition(":")[2] or "fast"
+                if tier not in imageinfo.TIERS:
+                    self.send_json({"error": "Unknown size tier."}, 400)
+                    return
+                size = "%dx%d" % imageinfo.best_size(info[1], info[2], tier)
+        elif size.startswith("auto"):
+            self.send_json({"error": "Auto size needs an image."}, 400)
             return
         if not prompt or len(prompt) > 2000:
             self.send_json({"error": "Prompt must be 1-2000 characters."}, 400)
@@ -250,7 +331,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             jid = uuid.uuid4().hex[:8]
             job = {"id": jid, "prompt": prompt, "size": size, "frames": frames, "seed": seed,
                    "user": self.user(), "status": "queued", "queued": time.time(),
+                   "mode": "i2v" if image else "t2v",
                    "file": f"{time.strftime('%Y%m%d-%H%M%S')}-{slug(prompt)}-{jid}.mp4"}
+            if image:
+                UPLOADS.mkdir(parents=True, exist_ok=True)
+                name = f"{jid}.{'jpg' if image['kind'] == 'jpeg' else image['kind']}"
+                (UPLOADS / name).write_bytes(image["raw"])
+                job.update(image=name, strength=round(strength, 2),
+                           image_size=f"{image['width']}x{image['height']}")
             jobs.append(job)
             del jobs[:-100]
             wake.notify()
@@ -261,7 +349,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    OUTPUTS.mkdir(exist_ok=True)
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+    (ROOT / "logs").mkdir(parents=True, exist_ok=True)
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=publish_state, daemon=True).start()
     if TS_LISTEN:

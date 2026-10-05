@@ -2,8 +2,9 @@
 LTX-2/
 models/
 
-# Generated videos and runtime state (job logs, prompts, requester logins)
+# Generated videos, uploaded images and runtime state (job logs, prompts, requester logins)
 outputs/
+uploads/
 logs/
 
 __pycache__/

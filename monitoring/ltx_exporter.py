@@ -93,6 +93,17 @@ def render_metrics():
     for (user, source, status), n in sorted(by_user.items()):
         metric("ltx_jobs_by_user_total", "Finished LTX jobs by requester and entry point (cli/webui).", n,
                {"user": user, "source": source, "status": status}, "counter")
+    by_mode = {}
+    for j in jobs:
+        key = (j.get("mode", "t2v"), j["status"])
+        by_mode[key] = by_mode.get(key, 0) + 1
+    for mode in ("t2v", "i2v"):
+        for status in ("ok", "failed"):
+            metric("ltx_jobs_by_mode_total", "Finished jobs by mode: t2v (text-to-video) or i2v (image-to-video).",
+                   by_mode.get((mode, status), 0), {"mode": mode, "status": status}, "counter")
+    for mode in ("t2v", "i2v"):
+        metric("ltx_job_mode", "1 for the mode of the running job.",
+               int(running and cur.get("mode", "t2v") == mode), {"mode": mode})
     metric("ltx_job_running_source", "1 for the entry point (cli/webui) of the running job.",
            1 if running else 0, {"source": cur.get("source", "cli") if running else "none",
                                  "user": cur.get("user", "") if running else ""})

@@ -156,8 +156,11 @@ panels += [
          steps=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
          desc="Web requests refused because Ornith (or something else) held the memory."),
     stat("Web vs CLI jobs", [('sum(ltx_jobs_by_user_total{source="webui"}) or vector(0)', "web"),
-                             ('sum(ltx_jobs_by_user_total{source="cli"}) or vector(0)', "cli")], 17, y, w=7,
+                             ('sum(ltx_jobs_by_user_total{source="cli"}) or vector(0)', "cli")], 17, y, w=4,
          steps=[{"color": "blue", "value": None}]),
+    stat("Text vs image jobs", [('sum(ltx_jobs_by_mode_total{mode="t2v"})', "text"),
+                                ('sum(ltx_jobs_by_mode_total{mode="i2v"})', "image")], 21, y, w=3,
+         steps=[{"color": "purple", "value": None}], desc="text-to-video vs image-to-video (finished jobs)"),
 ]
 y += 5
 panels += [
@@ -173,7 +176,7 @@ panels += [
 
 dashboard = {
     "uid": "ltx-video", "title": "LTX-2.5 Video Generation", "tags": ["ltx", "video", "gpu"],
-    "timezone": "browser", "schemaVersion": 39, "version": 4, "editable": True,
+    "timezone": "browser", "schemaVersion": 39, "version": 5, "editable": True,
     "refresh": "5s", "time": {"from": "now-1h", "to": "now"},
     "annotations": {"list": []}, "templating": {"list": []}, "panels": panels,
 }

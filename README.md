@@ -4,7 +4,7 @@
 
 # LTX-2.5 (NVFP4) on NVIDIA DGX Spark (GB10)
 
-**Generate video with synchronized audio from a text prompt on a single DGX Spark: a 4-second 768×512 clip in about a minute, with a tailnet web studio and Grafana monitoring**
+**Generate video with synchronized audio from a text prompt or a still image on a single DGX Spark: a 4-second 768×512 clip in about a minute, with a tailnet web studio and Grafana monitoring**
 
 [![Model](https://img.shields.io/badge/model-Lightricks%2FLTX--2.5-blue)](https://huggingface.co/Lightricks/LTX-2.5)
 [![Quant](https://img.shields.io/badge/quant-NVFP4%20DiT%20%2B%20BF16%20VAE-8A2BE2)](#configuration-reference)
@@ -34,7 +34,9 @@ It gives you:
   A [three-line patch](patches/ltx-kernels-sm121a.patch) adds `sm_121a`.
 - **One-command install.** `install.sh` pins the tested upstream tag and lockfile, applies the patch,
   builds the kernels and downloads the 44 GiB of weights.
-- **LTX Video Studio**, a small web app: prompt in, video with sound out, served privately to your
+- **Image-to-video.** Drop in a photo and describe the motion; `i2v.sh` and the studio size the output
+  to the photo's aspect ratio (EXIF rotation included) so the subject isn't cropped away.
+- **LTX Video Studio**, a small web app: prompt or image in, video with sound out, served privately to your
   [Tailscale](https://tailscale.com/) tailnet, with a queue and per-user attribution.
 - **Grafana monitoring:** live stage, progress and memory for every job, plus history and who asked for what.
 
@@ -63,6 +65,7 @@ GIF previews are downscaled and silent).
 - [Hardware & Software Requirements](#hardware--software-requirements)
 - [Quick Start](#quick-start)
 - [Configuration Reference](#configuration-reference)
+- [Image-to-Video](#image-to-video)
 - [The GB10 (sm_121) Patch](#the-gb10-sm_121-patch)
 - [LTX Video Studio (Web UI)](#ltx-video-studio-web-ui)
 - [Monitoring with Grafana](#monitoring-with-grafana)
@@ -168,6 +171,9 @@ curl -fsSL https://raw.githubusercontent.com/Hitheshkaranth/LTX-2.5_Video_DGX_Sp
 cd LTX-2.5_Video_DGX_Spark_Setup
 ./run.sh "A red fox trots through fresh snow in a quiet birch forest at golden hour, soft breath vapor, gentle wind sound, cinematic tracking shot" \
          outputs/fox.mp4 --height 512 --width 768 --num-frames 97
+
+# 5. Or animate a photo (output size follows the photo's aspect ratio)
+./i2v.sh photo.jpg "She turns toward the camera and smiles as wind lifts her hair, soft city ambience" outputs/smile.mp4
 ```
 
 Optional extras:
@@ -199,6 +205,41 @@ Useful extra flags: `--width`/`--height` (multiples of 64, since pass 1 runs at 
 
 > `--offload cpu` gains nothing on a Spark, because CPU and GPU memory are the same physical pool.
 
+## Image-to-Video
+
+LTX-2.5 conditions on a still image through the same distilled NVFP4 pipeline, with no extra weights.
+The image becomes frame 0 and the prompt describes what happens next.
+
+```bash
+./i2v.sh IMAGE "prompt" [out.mp4] [extra pipeline flags]
+
+LTX_TIER=hd ./i2v.sh portrait.jpg "Slow dolly-in as she looks up, rain ambience" outputs/portrait.mp4 --num-frames 121
+LTX_IMAGE_STRENGTH=0.8 ./i2v.sh street.png "Traffic starts moving, horns, evening light"
+```
+
+| Setting | Default | Effect |
+|---|---|---|
+| `LTX_TIER` | `fast` | Resolution tier: `fast` (~768 px long side), `hd` (~1024–1280), `max` (~1536) |
+| `LTX_IMAGE_STRENGTH` | `1.0` | 1.0 keeps frame 0 identical to the image; lower values (0.3–1.0) let the model drift |
+| `--width/--height` | auto | Pass your own to override the automatic size |
+
+Why the automatic sizing matters: the pipeline **resizes and center-crops** the image to the output
+size. A portrait photo rendered at 768×512 loses most of its top and bottom. `webui/imageinfo.py` reads
+the image header (PNG, JPEG, WebP; standard library only) and picks the preset closest in aspect ratio:
+
+| Image | `fast` | `hd` | `max` |
+|---|---|---|---|
+| 4:3 landscape (e.g. 4032×3024) | 768×512 | 1024×768 | 1536×1024 |
+| 3:4 portrait phone photo | 512×768 | 768×1024 | 1024×1536 |
+| 16:9 (1920×1080) | 768×512 | 1024×576 | 1536×1024 |
+| Square | 640×640 | 768×768 | 1024×1024 |
+
+Phone JPEGs are usually stored landscape with an EXIF "rotate 90°" tag. The pipeline's decoder
+applies that rotation, so the size picker honours EXIF orientation too; otherwise a portrait photo
+would be rendered landscape and cropped. Argument handling, EXIF rotation and the pipeline's own
+preprocessing were verified on CPU against the real parser. Generation timings for image-to-video
+haven't been benchmarked yet; expect them to match text-to-video at the same size and length.
+
 ## The GB10 (sm_121) Patch
 
 Upstream builds its NVFP4 kernels only for arch-specific targets (`sm_100a`, `sm_110a`, `sm_120a`),
@@ -225,13 +266,25 @@ expected when both operands are quantized to 4 bits.
 <img src="assets/webui.png" alt="LTX Video Studio" width="90%">
 </div>
 
-A single-file, standard-library Python app (`webui/server.py` + `webui/index.html`):
+A dark, cinematic studio served by a standard-library Python app (`webui/server.py`,
+`webui/index.html`, `webui/imageinfo.py`). There's no build step and no npm.
 
-- **Prompt → video:** size presets from 768×512 to 1536×1024 in landscape or portrait, lengths of
-  2, 4, 5 or 8 s, and an optional seed.
-- **Live progress:** stage name, denoise percentage, elapsed time and GPU memory, updated every 2 s.
+- **Composer:** a floating prompt bar with aspect (landscape, portrait, square, *match image*),
+  quality (Fast, HD, Max), length (2, 4, 5, 8 s), seed and **Ctrl/⌘ + Enter**.
+- **Image → video:** attach with the button, drag onto the page or paste from the clipboard (PNG, JPEG,
+  WebP up to 16 MB). Size defaults to *match image*, and a strength slider appears.
+- **Activity rail:**
+  - **Now rendering** shows a five-step tracker (Prompt → Pass 1 → Upscale → Pass 2 → Render) with
+    elapsed time and an ETA. CLI jobs appear here too.
+  - **Up next** is the numbered queue, with who asked and an estimated start time for each job.
+  - **Finished** lists recent jobs (web and CLI) with status, render time and failure reasons;
+    click one to play it.
+  - ETAs use the median of your past jobs at the same size and length, or a fit to the benchmark
+    sweep when there's no history.
+- **Gallery:** a masonry feed that plays on hover, filtered by *All / Text → video / Image → video*,
+  with the source-image thumbnail on clips made from images. Click a clip for a full-screen viewer with
+  the prompt, render stats, **Reuse prompt**, **Animate this image again** and download.
 - **Queue:** one job at a time, up to 10 waiting, in order. Benchmarks go through it too, so nothing overlaps.
-- **Gallery:** every MP4 in `outputs/`, playable in the browser (HTTP range requests) and downloadable.
 - **Memory gate:** refuses to start a job with less than 40 GiB free (`LTX_MIN_FREE_GIB`) and tells
   you if the LLM container is the reason, instead of letting the box swap.
 - **Who asked:** behind `tailscale serve`, each job is tagged with the requester's Tailscale login
@@ -264,6 +317,7 @@ GPU memory from `nvidia-smi`), and when the run ends it appends a record to `log
 | `ltx_job_gpu_memory_bytes` | Live unified-memory allocation of the LTX process |
 | `ltx_jobs_total{status}`, `ltx_jobs_by_user_total{user,source,status}` | Finished jobs, by requester and entry point (`cli` / `webui`) |
 | `ltx_last_job_{duration_seconds,peak_gpu_memory_bytes,realtime_factor}` | Last job stats |
+| `ltx_jobs_by_mode_total{mode,status}`, `ltx_job_mode{mode}` | Text-to-video (`t2v`) vs image-to-video (`i2v`) |
 | `ltx_video_seconds_generated_total` | Seconds of video produced |
 | `ltx_webui_up`, `ltx_webui_queue_jobs{state}`, `ltx_webui_rejected_low_memory` | Web UI health and queue |
 
@@ -330,14 +384,16 @@ Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks
 ├── install.sh                 # clone LTX-2 @ v1.4.2, apply patch, build env + kernels, download weights
 ├── download.sh                # the 5 weight files (~44 GiB) from Lightricks/LTX-2.5
 ├── run.sh                     # text-to-video CLI (NVFP4 distilled pipeline)
+├── i2v.sh                     # image-to-video CLI: sizes output to the image's aspect ratio
 ├── ltx_job.py                 # wraps each run: live stage/progress/memory + job history
 ├── setup-services.sh          # systemd --user units for web UI + exporter, optional tailscale serve
 ├── patches/
 │   ├── ltx-kernels-sm121a.patch   # GB10 NVFP4 kernel build fix
 │   └── uv.lock                    # exact tested dependency set (torch 2.13+cu132, natten 0.21.7, …)
 ├── webui/
-│   ├── server.py              # LTX Video Studio: queue, memory gate, gallery, range-request video
-│   └── index.html             # single-page UI (light/dark)
+│   ├── server.py              # LTX Video Studio API: queue, uploads, memory gate, history, range-request video
+│   ├── index.html             # single-page studio: composer, activity rail, gallery, viewer
+│   └── imageinfo.py           # stdlib PNG/JPEG/WebP size + EXIF orientation sniffing, aspect-matched sizes
 ├── monitoring/
 │   ├── ltx_exporter.py        # Prometheus exporter (:9092)
 │   ├── make_dashboard.py      # generates the Grafana dashboard JSON
@@ -348,7 +404,7 @@ Reproduce with `python3 benchmarks/bench.py && LTX-2/.venv/bin/python benchmarks
 └── assets/                    # banner, sample GIFs, screenshots
 ```
 
-Created at runtime and git-ignored: `LTX-2/` (patched upstream), `models/`, `outputs/`, and `logs/`
+Created at runtime and git-ignored: `LTX-2/` (patched upstream), `models/`, `outputs/`, `uploads/` (studio images), and `logs/`
 (job history includes prompts and requester logins).
 
 ## Troubleshooting
@@ -364,6 +420,7 @@ Created at runtime and git-ignored: `LTX-2/` (patched upstream), `models/`, `out
 | `tailscale serve`: *Access denied* | `sudo tailscale set --operator=$USER` once |
 | Tailnet HTTPS URL times out on first visit | The first request provisions the TLS certificate; give it a minute |
 | A device can't resolve `<host>.ts.net` | MagicDNS is off on that device. Use `http://<tailscale-ip>:8091` (`setup-services.sh --tailnet` sets this up) |
+| Image-to-video crops off the subject | Use *Match image* in the studio, or let `i2v.sh` pick the size; a fixed size center-crops the photo |
 | `ffmpeg` not installed | Not needed: the pipeline encodes through PyAV, which ships its own FFmpeg |
 
 ## Credits & License

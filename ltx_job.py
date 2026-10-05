@@ -75,6 +75,9 @@ def main():
         "start": time.time(), "pid": None, "gpu_mem_bytes": 0, "peak_gpu_mem_bytes": 0,
         "width": width, "height": height, "frames": frames, "fps": fps, "output": output,
         "prompt": arg(cmd, "--prompt", ""),
+        # --image PATH FRAME STRENGTH turns the run into image-to-video.
+        "image": Path(arg(cmd, "--image")).name if "--image" in cmd else "",
+        "mode": "i2v" if "--image" in cmd else "t2v",
         # Set by webui/server.py; plain CLI runs are attributed to the shell user.
         "user": os.environ.get("LTX_JOB_USER") or os.environ.get("USER", "unknown"),
         "source": os.environ.get("LTX_JOB_SOURCE", "cli"),
@@ -126,6 +129,7 @@ def main():
             "peak_gpu_mem_bytes": state["peak_gpu_mem_bytes"], "width": width, "height": height,
             "frames": frames, "fps": fps, "video_seconds": round(frames / fps, 3) if ok else 0,
             "output": output, "prompt": state["prompt"], "user": state["user"], "source": state["source"],
+            "image": state["image"], "mode": state["mode"],
         }
         with open(HISTORY, "a") as f:
             f.write(json.dumps(record) + "\n")
