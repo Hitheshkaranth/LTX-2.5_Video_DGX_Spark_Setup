@@ -33,7 +33,7 @@ FRAMES = 97  # 4 s at 24 fps
 ENV = os.environ | {"LTX_JOB_SOURCE": "bench", "LTX_JOB_USER": "benchmark"}
 RUNNING = ROOT / "logs" / "running"
 MIN_FREE = 50 * 2**30
-JOB_PEAK = 30 * 2**30
+JOB_PEAK = 24 * 2**30  # measured per-process peak 22.5-23.3 GiB (nvidia-smi), + margin
 start_lock = threading.Lock()
 starting = set()  # outputs launched whose state file hasn't appeared yet (reserved at full peak)
 

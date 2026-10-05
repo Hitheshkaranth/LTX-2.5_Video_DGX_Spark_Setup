@@ -14,6 +14,7 @@ import fcntl
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -94,6 +95,20 @@ def main():
     state["pid"] = proc.pid
     write_json(live_file, state)
     write_json(LEGACY, state)
+
+    def stop(signum, _frame):
+        # Killed (benchmark abort, Ctrl-C): take the render down too and leave no stale state file,
+        # otherwise an orphaned pipeline keeps holding ~23 GiB with nothing tracking it.
+        proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        live_file.unlink(missing_ok=True)
+        sys.exit(128 + signum)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
 
     def sample():
         while proc.poll() is None:

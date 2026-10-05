@@ -59,8 +59,9 @@ MIN_FREE_BYTES = int(os.environ.get("LTX_MIN_FREE_GIB", "50")) * 2**30
 MAX_QUEUE = 10
 # Parallel jobs. They share one GPU, so each runs slower; overlap mainly hides model loading.
 WORKERS = max(1, int(os.environ.get("LTX_WORKERS", "1")))
-# Expected peak unified memory per job; reserved for running jobs that haven't allocated it yet.
-JOB_PEAK_BYTES = int(float(os.environ.get("LTX_JOB_PEAK_GIB", "30")) * 2**30)
+# Per-job GPU memory peak as nvidia-smi reports it (measured 22.5-23.3 GiB) + margin; reserved for
+# running jobs that haven't allocated it yet. Compared against gpu_mem_bytes, so not the ~29 GiB system-wide figure.
+JOB_PEAK_BYTES = int(float(os.environ.get("LTX_JOB_PEAK_GIB", "24")) * 2**30)
 
 lock = threading.Lock()
 wake = threading.Condition(lock)
