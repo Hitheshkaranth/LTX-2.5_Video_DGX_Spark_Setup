@@ -32,6 +32,7 @@ UPLOADS = ROOT / "uploads"  # conditioning images for image-to-video
 RUNNING_DIR = ROOT / "logs" / "running"  # ltx_job.py: one <job_id>.json per in-flight job
 LEGACY_CURRENT = ROOT / "logs" / "current.json"  # older ltx_job.py versions
 WEBUI_STATE = ROOT / "logs" / "webui_state.json"  # read by ltx_exporter.py for Grafana
+QUEUE_FILE = ROOT / "logs" / "webui_queue.json"  # survives restarts: queued jobs resume, running ones are adopted
 HISTORY = ROOT / "logs" / "jobs.jsonl"
 INDEX = Path(__file__).resolve().parent / "index.html"
 LISTEN = (os.environ.get("LTX_WEBUI_HOST", "127.0.0.1"), int(os.environ.get("LTX_WEBUI_PORT", "8090")))
@@ -82,6 +83,45 @@ def slug(text):
     return re.sub(r"[^a-z0-9]+", "-", text.lower())[:40].strip("-") or "clip"
 
 
+def save_queue():
+    """Persist the job list (called with `lock` held). Restart-safe with systemd KillMode=process,
+    which lets in-flight renders outlive the server so a new server can adopt them."""
+    tmp = QUEUE_FILE.with_name(f".{QUEUE_FILE.name}.tmp")
+    tmp.write_text(json.dumps(jobs[-100:]))
+    tmp.replace(QUEUE_FILE)
+
+
+def load_queue():
+    try:
+        saved = json.loads(QUEUE_FILE.read_text())
+    except (OSError, ValueError):
+        return
+    for j in saved:
+        if j.get("status") == "running":
+            j["adopted"] = True  # its render may still be going; adoption_monitor settles it
+    jobs.extend(saved)
+
+
+def adoption_monitor():
+    """Settle running jobs inherited from a previous server once their render process is gone."""
+    time.sleep(10)  # let in-flight renders refresh their state files
+    while True:
+        live = {Path(st.get("output", "")).name for st in running_states()}
+        with lock:
+            changed = False
+            for j in jobs:
+                if j.get("adopted") and j["status"] == "running" and j["file"] not in live:
+                    ok = (OUTPUTS / j["file"]).is_file()
+                    j.update(status="done" if ok else "failed", finished=time.time())
+                    if not ok:
+                        j["error"] = "Interrupted: the studio restarted and the render didn't finish."
+                    changed = True
+            if changed:
+                save_queue()
+                wake.notify_all()
+        time.sleep(3)
+
+
 def effective_free():
     """MemAvailable minus memory that running jobs will still allocate (they ramp up over ~20 s).
 
@@ -101,6 +141,9 @@ def worker():
             while not any(j["status"] == "queued" for j in jobs):
                 wake.wait()
             job = next(j for j in jobs if j["status"] == "queued")
+            if sum(j["status"] == "running" for j in jobs) >= WORKERS:
+                wake.wait(timeout=5)  # adopted renders from before a restart can fill the slots
+                continue
             free = effective_free()
             if free < MIN_FREE_BYTES:
                 if any(j["status"] == "running" for j in jobs):
@@ -111,9 +154,11 @@ def worker():
                 job.update(status="failed", finished=time.time(),
                            error=f"Not enough free memory ({mem_available() / 2**30:.0f} GiB free, need "
                                  f"{MIN_FREE_BYTES // 2**30}). Is an LLM server ({LLM_CONTAINER}) running?")
+                save_queue()
                 continue
             job.pop("waiting", None)
             job.update(status="running", started=time.time())
+            save_queue()
         w, h = job["size"].split("x")
         cmd = [RUN_SCRIPT, job["prompt"], str(OUTPUTS / job["file"]),
                "--width", w, "--height", h, "--num-frames", str(job["frames"])]
@@ -133,6 +178,7 @@ def worker():
             if not ok:
                 tail = log.read_text(errors="replace").strip().splitlines()[-3:]
                 job["error"] = f"exit {rc}: " + " | ".join(tail)[-400:]
+            save_queue()
             wake.notify_all()  # memory freed: let waiting workers re-check
 
 
@@ -374,6 +420,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                            image_size=f"{image['width']}x{image['height']}")
             jobs.append(job)
             del jobs[:-100]
+            save_queue()
             wake.notify()
         self.send_json(job, 201)
 
@@ -384,6 +431,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 if __name__ == "__main__":
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     (ROOT / "logs").mkdir(parents=True, exist_ok=True)
+    load_queue()
+    threading.Thread(target=adoption_monitor, daemon=True).start()
     for _ in range(WORKERS):
         threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=publish_state, daemon=True).start()

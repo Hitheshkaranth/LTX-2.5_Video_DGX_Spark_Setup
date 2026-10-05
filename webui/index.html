@@ -91,7 +91,7 @@
   .empty { padding: 60px 20px; text-align: center; color: var(--muted); border: 1px dashed var(--line2); border-radius: var(--radius); }
 
   /* pending (queued / rendering) cards */
-  .card.pending { cursor: default; display: none; aspect-ratio: var(--ar, 3/2); display: grid; place-items: center; text-align: center; padding: 18px;
+  .card.pending { cursor: default; aspect-ratio: var(--ar, 3/2); display: grid; place-items: center; text-align: center; padding: 18px;
                   background: linear-gradient(110deg, #12141a 30%, #1b1e27 50%, #12141a 70%); background-size: 200% 100%;
                   animation: shimmer 2.2s linear infinite; }
   .card.pending:hover { transform: none; }
@@ -100,6 +100,16 @@
   .card.pending .sub { font-size: 12px; color: var(--muted); margin-top: 6px; overflow-wrap: anywhere; }
   .card.pending .bar { width: min(240px, 80%); height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); margin: 14px auto 0; overflow: hidden; }
   .card.pending .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--lime), var(--cyan)); transition: width .6s; }
+  #tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; columns: auto; margin-bottom: 14px; }
+  #tiles .card { margin: 0; }
+  #tiles:empty { display: none; }
+  .card.pending .live { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 6px;
+                        padding: 4px 8px; border-radius: 8px; font: 600 11px/1 var(--font); background: rgba(0,0,0,.5);
+                        border: 1px solid rgba(255,255,255,.12); }
+  .card.pending .live .dot { width: 6px; height: 6px; }
+  .card.pending .pct { font: 700 28px/1 var(--display); margin-top: 10px; background: linear-gradient(92deg, var(--lime), var(--cyan));
+                       -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card.pending.queued { animation: none; background: #101217; border-style: dashed; }
   .card.pending .bg { position: absolute; inset: 0; z-index: -1; opacity: .18; background-size: cover; background-position: center; filter: blur(2px); }
   .card.failed { animation: none; background: #1a1215; border-color: rgba(248,113,113,.3); }
   /* activity rail: now rendering / up next / finished */
@@ -273,6 +283,7 @@
       <button class="tab" data-filter="i2v">Image → video</button>
     </div>
   </div>
+  <div id="tiles" class="feed" aria-live="polite"></div>
   <div id="feed" class="feed"><div class="empty">Loading…</div></div>
   </div>
   <aside class="rail" aria-label="Activity">
@@ -480,6 +491,7 @@ function renderActivity(s) {
     items.push({live: null, w, h, frames: j.frames, prompt: j.prompt, mode: j.mode, image: j.image, src: "webui", user: j.user});
   }
   const rendered = items.map((e) => nowItem(e, s.recent));
+  renderTiles(items, s);
   const slots = rendered.map((r) => r.remaining);  // time until each busy worker frees up
   $("nowTitle").textContent = items.length > 1 ? `Now rendering · ${items.length} in parallel` : "Now rendering";
   $("nowBox").classList.toggle("on", items.length > 0);
@@ -514,6 +526,27 @@ $("done").addEventListener("click", (e) => {
   const li = e.target.closest("li[data-file]"); if (!li) return;
   const v = videos.find((x) => x.file === li.dataset.file); if (v) openLb(v);
 });
+
+// Live tiles at the top of the gallery: one per running job (parallel workers each get one), then the queue.
+function renderTiles(items, s) {
+  const queued = s.jobs.filter((j) => j.status === "queued").sort((a, b) => a.queued - b.queued);
+  const bgOf = (img) => img ? `<div class="bg" style="background-image:url('uploads/${encodeURIComponent(img)}')"></div>` : "";
+  const run = items.map((e, i) => {
+    const ci = e.live ? Math.max(0, ORDER.indexOf(e.live.stage)) : 0;
+    const frac = e.live && e.live.steps ? e.live.step / e.live.steps : 0;
+    const overall = Math.max(2, Math.round(100 * (ci + frac) / ORDER.length));
+    return `<div class="card pending" style="--ar:${e.w}/${e.h}">${bgOf(e.image)}
+      <span class="live"><span class="dot busy"></span>${items.length > 1 ? `Rendering ${i + 1}/${items.length}` : "Rendering"}</span>
+      <div><div class="stage">${esc(e.live ? (STAGE[e.live.stage] || e.live.stage) : "Starting")}</div>
+        <div class="pct">${overall}%</div>
+        <div class="bar"><i style="width:${overall}%"></i></div>
+        <div class="sub">${esc((e.prompt || "").slice(0, 80))}${(e.prompt || "").length > 80 ? "…" : ""}</div></div></div>`;
+  });
+  const q = queued.map((j, i) => `<div class="card pending queued" style="--ar:${arOf(j.size)}">${bgOf(j.image)}<div>
+      <div class="stage">${j.waiting === "memory" ? "Waiting for memory" : `In queue · #${i + 1}`}</div>
+      <div class="sub">${esc(j.prompt.slice(0, 80))}${j.prompt.length > 80 ? "…" : ""}</div></div></div>`);
+  $("tiles").innerHTML = (st.filter === "all" ? [...run, ...q] : []).join("");
+}
 
 function renderFeed() {
   const list = videos.filter((v) => st.filter === "all" || (st.filter === "i2v") === !!v.image);

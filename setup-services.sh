@@ -33,6 +33,8 @@ $TS_LISTEN_LINE
 ExecStart=/usr/bin/python3 $ROOT/webui/server.py
 Restart=always
 RestartSec=5
+# Renders outlive a studio restart; the new server adopts them (logs/webui_queue.json).
+KillMode=process
 
 [Install]
 WantedBy=default.target

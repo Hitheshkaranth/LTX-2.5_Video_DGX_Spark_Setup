@@ -15,6 +15,11 @@
 
 </div>
 
+<div align="center">
+<img src="assets/studio-live.png" alt="LTX Video Studio live on the DGX Spark: two clips rendering in parallel, queue and activity rail" width="100%">
+<br><sub><b>LTX Video Studio</b> live on the Spark: two clips rendering in parallel, the queue in order, and every stage tracked in the activity rail.</sub>
+</div>
+
 ---
 
 ## Overview
@@ -339,7 +344,11 @@ system-wide), so two or three fit when nothing else holds the memory.
   encoding with another's GPU work. This hasn't been benchmarked on the Spark yet, so measure your own
   mix before relying on it.
 - Each running job writes its own `logs/running/<job_id>.json`, so the CLI, the studio and Grafana all
-  see every parallel job.
+  see every parallel job. In the gallery each running job gets a live tile ("Rendering 1/2 · 83%"),
+  followed by the queued jobs in order.
+- **Restart-safe:** the queue is saved to `logs/webui_queue.json`, and the service uses
+  `KillMode=process`, so restarting or updating the studio doesn't kill renders in progress. The new
+  server adopts them (marking them done when they finish) and resumes the queue.
 
 ### Publishing to your tailnet
 
