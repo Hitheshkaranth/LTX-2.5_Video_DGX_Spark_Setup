@@ -117,7 +117,7 @@ flowchart LR
         DCGM["dcgm-exporter\nnode-exporter"]
     end
 
-    U1 -->|"https://&lt;host&gt;.ts.net"| TS --> UI --> RUN --> PIPE
+    U1 -->|"HTTPS · host.ts.net"| TS --> UI --> RUN --> PIPE
     RUN --> LOG --> EXP --> PROM --> GF
     DCGM --> PROM
 
