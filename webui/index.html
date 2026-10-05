@@ -440,6 +440,7 @@ function typical(w, h, frames, recent) {
 }
 
 function renderActivity(s) {
+  s.recent = s.recent || [];  // older servers don't send history; degrade instead of breaking the page
   const now = s.now || Date.now() / 1000, live = s.live, lj = s.live_job;
   const webRun = s.jobs.find((j) => j.status === "running");
   // ── now rendering ──
