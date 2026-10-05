@@ -51,6 +51,12 @@ GIF previews are downscaled and silent).
 | <img src="assets/sample-fox.gif" width="100%"> | <img src="assets/sample-coffee.gif" width="100%"> | <img src="assets/sample-waves.gif" width="100%"> |
 | 2 s clip | 2 s clip | 4 s clip |
 
+### Screenshots
+
+| LTX Video Studio: prompt, live progress, queue, gallery | Grafana: every job's stage, memory, GPU and history |
+|:---:|:---:|
+| <a href="assets/webui.png"><img src="assets/webui.png" alt="LTX Video Studio web UI" width="100%"></a> | <a href="assets/grafana.png"><img src="assets/grafana.png" alt="LTX-2.5 Grafana dashboard" width="100%"></a> |
+
 ## Table of Contents
 
 - [Architecture](#architecture)
