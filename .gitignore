@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 *.tmp
 *.bak-*
+
+# Monitoring stack credentials (created by monitoring/stack/setup.sh)
+monitoring/stack/.env

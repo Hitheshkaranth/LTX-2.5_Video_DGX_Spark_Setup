@@ -5,6 +5,7 @@
 #   ./setup-services.sh            # services only (UI on http://127.0.0.1:8090, metrics on :9092)
 #   ./setup-services.sh --tailnet  # also `tailscale serve` the UI over HTTPS, tailnet-only
 #   LTX_WORKERS=2 ./setup-services.sh   # render up to 2 jobs in parallel (default 1)
+#   EXPORTER_HOST=172.17.0.1 ./setup-services.sh  # keep metrics off the LAN (Docker bridge only)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")" && pwd)
 UNITS="$HOME/.config/systemd/user"
@@ -29,6 +30,7 @@ Type=simple
 Environment=LTX_WEBUI_HOST=127.0.0.1
 Environment=LTX_WEBUI_PORT=8090
 Environment=LTX_WORKERS=${LTX_WORKERS:-1}
+Environment=LLM_CONTAINER=${LLM_CONTAINER:-}
 $TS_LISTEN_LINE
 ExecStart=/usr/bin/python3 $ROOT/webui/server.py
 Restart=always
@@ -49,6 +51,7 @@ After=network.target
 Type=simple
 Environment=LTX_LOGS=$ROOT/logs
 Environment=EXPORTER_PORT=9092
+Environment=EXPORTER_HOST=${EXPORTER_HOST:-0.0.0.0}
 ExecStart=/usr/bin/python3 $ROOT/monitoring/ltx_exporter.py
 Restart=on-failure
 RestartSec=5
@@ -56,6 +59,11 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
+
+# Keep user services running after you log out (otherwise a headless box stops the studio at SSH logout).
+if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]; then
+  loginctl enable-linger "$USER" 2>/dev/null || sudo loginctl enable-linger "$USER"
+fi
 
 systemctl --user daemon-reload
 systemctl --user enable --now ltx-webui ltx-exporter
@@ -72,6 +80,6 @@ fi
 
 cat <<EOF
 
-Grafana: add monitoring/prometheus-scrape.yml to your Prometheus scrape_configs, then provision
-monitoring/grafana-dashboard.json (or regenerate it with monitoring/make_dashboard.py).
+Grafana dashboard: run monitoring/stack/setup.sh (starts Prometheus + Grafana in Docker; you choose the login).
+Already run Prometheus? Add monitoring/prometheus-scrape.yml to it and import monitoring/grafana-dashboard.json.
 EOF

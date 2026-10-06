@@ -7,6 +7,7 @@ Metrics come from ltx_exporter.py (job state/history), dcgm-exporter (GPU) and
 node-exporter (unified RAM). Re-run after editing; Grafana reloads in ~10s.
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -75,7 +76,9 @@ def ts(title, exprs, x, y, w=12, h=8, unit="none", stack=False, maxv=None, desc=
 GPU = 'DCGM_FI_DEV_{}{{gpu="0"}}'
 RAM_USED = "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"
 # The LLM sharing the box with LTX; edit the port if yours differs.
-ORNITH_UP = 'max(up{job="vllm",instance=~".*:8004"}) or vector(0)'
+# Optional LLM server sharing the box (uncomment the vllm job in monitoring/stack/prometheus.yml).
+LLM_PORT = os.environ.get("LLM_PORT", "8004")
+LLM_UP = f'max(up{{job="vllm",instance=~".*:{LLM_PORT}"}}) or vector(0)'
 
 panels = []
 y = 0
@@ -95,10 +98,10 @@ panels += [
     stat("Elapsed", [("ltx_job_elapsed_seconds", "")], 12, y, w=3, unit="s"),
     stat("LTX GPU memory", [("ltx_job_gpu_memory_bytes", "")], 15, y, w=3, unit="bytes",
          steps=[{"color": "blue", "value": None}, {"color": "orange", "value": 40e9}, {"color": "red", "value": 60e9}]),
-    stat("Ornith LLM (:8004)", [(ORNITH_UP, "")], 18, y, w=3,
+    stat(f"LLM server (:{LLM_PORT})", [(LLM_UP, "")], 18, y, w=3,
          mappings=[{"type": "value", "options": {"0": {"text": "Stopped", "color": "orange"},
                                                  "1": {"text": "Running", "color": "green"}}}],
-         desc="Shares the 121 GiB unified pool with LTX. Both at once will not fit."),
+         desc="Optional vLLM server sharing the unified memory pool with LTX (needs the vllm scrape job)."),
     stat("RAM available", [("node_memory_MemAvailable_bytes", "")], 21, y, w=3, unit="bytes",
          steps=[{"color": "red", "value": None}, {"color": "orange", "value": 20e9}, {"color": "green", "value": 40e9}],
          desc="Unified memory left for everything. Under ~20 GiB the box starts swapping."),
@@ -157,7 +160,7 @@ panels += [
          7, y, w=6, no_value="Nobody", steps=[{"color": "purple", "value": None}], instant=True),
     stat("Refused: low memory", [("ltx_webui_rejected_low_memory", "")], 13, y, w=4,
          steps=[{"color": "green", "value": None}, {"color": "orange", "value": 1}],
-         desc="Web requests refused because Ornith (or something else) held the memory."),
+         desc="Web requests refused because something else (often an LLM server) held the memory."),
     stat("Web vs CLI jobs", [('sum(ltx_jobs_by_user_total{source="webui"}) or vector(0)', "web"),
                              ('sum(ltx_jobs_by_user_total{source="cli"}) or vector(0)', "cli")], 17, y, w=4,
          steps=[{"color": "blue", "value": None}]),

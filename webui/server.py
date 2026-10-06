@@ -43,8 +43,9 @@ LISTEN = (os.environ.get("LTX_WEBUI_HOST", "127.0.0.1"), int(os.environ.get("LTX
 # clients whose MagicDNS is off; tailscale serve only routes by hostname, so a bare IP 404s there.
 TS_LISTEN = os.environ.get("LTX_WEBUI_TS_LISTEN", "")
 TAILSCALE = os.environ.get("TAILSCALE_BIN") or shutil.which("tailscale") or "tailscale"
-# LLM container that shares unified memory with LTX; only used to explain a low-memory refusal.
-LLM_CONTAINER = os.environ.get("LLM_CONTAINER", "vllm-ornith-a3b")
+# Optional Docker container name of an LLM server sharing unified memory with LTX; only used to
+# explain a low-memory refusal. Empty = don't check.
+LLM_CONTAINER = os.environ.get("LLM_CONTAINER", "")
 _whois_cache = {}
 
 # Final output sizes; the distilled pipeline renders stage 1 at half size, so both
@@ -76,6 +77,8 @@ def mem_available():
 
 
 def llm_running():
+    if not LLM_CONTAINER:
+        return None
     try:
         out = subprocess.run(["docker", "ps", "--filter", f"name=^{LLM_CONTAINER}$", "--format", "{{.Status}}"],
                              capture_output=True, text=True, timeout=5).stdout
@@ -168,7 +171,8 @@ def worker():
                     continue
                 job.update(status="failed", finished=time.time(),
                            error=f"Not enough free memory ({mem_available() / 2**30:.0f} GiB free, need "
-                                 f"{MIN_FREE_BYTES // 2**30}). Is an LLM server ({LLM_CONTAINER}) running?")
+                                 f"{MIN_FREE_BYTES // 2**30}). Is another app (e.g. an LLM server"
+                                 f"{f' {LLM_CONTAINER}' if LLM_CONTAINER else ''}) holding memory?")
                 save_queue()
                 continue
             job.pop("waiting", None)

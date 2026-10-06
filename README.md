@@ -27,9 +27,6 @@
 This repository is the working setup used to run
 [**Lightricks LTX-2.5**](https://huggingface.co/Lightricks/LTX-2.5), a 22B-parameter audio-video
 diffusion transformer, on a single **NVIDIA DGX Spark (GB10, Blackwell, 128 GB unified memory)**.
-It is a sister project to the
-[Ornith-1.5 LLM deployment](https://github.com/Hitheshkaranth/Ornith-1.5_A3B_Model_DGX_Spark_Setup)
-on the same box.
 
 It gives you:
 
@@ -50,11 +47,19 @@ It gives you:
 
 ### Demo videos
 
-Two 1-minute demos (MP4, 1080p, with sound) recorded from the live studio on the Spark, with rendering sped up.
-Each goes from typing the prompt to the finished clip. The Grafana dashboard shows the memory footprint while the
-job renders, and the generated clip plays at the end.
+The two 8-second clips below were generated on the Spark from the studio: one from a prompt, one from a photo.
+The previews are silent, downscaled GIFs; click one for the full MP4 with its generated sound.
 
-| Text → video: a blast furnace, from a prompt | Image → video: a spacewalk photo brought to life |
+| Text → video: *a blast furnace being tapped, sparks, workers in heat suits* | Image → video: *a spacewalk photo brought to life* |
+|:---:|:---:|
+| <a href="assets/demo-text-to-video-clip.mp4"><img src="assets/demo-text-to-video-clip.gif" alt="8-second clip generated from a text prompt: molten iron pouring from a blast furnace" width="100%"></a> | <a href="assets/demo-image-to-video-clip.mp4"><img src="assets/demo-image-to-video-clip.gif" alt="8-second clip generated from a NASA spacewalk photo" width="100%"></a> |
+| 1280×704 · 8 s · [MP4 with sound](assets/demo-text-to-video-clip.mp4) | 1024×768 · 8 s · [MP4 with sound](assets/demo-image-to-video-clip.mp4) |
+
+**How they were made:** two 1-minute walkthroughs (MP4, 1080p, with sound) recorded from the live studio, with
+rendering sped up. Each goes from typing the prompt to the finished clip. The Grafana dashboard shows the memory
+footprint while the job renders.
+
+| Walkthrough: text → video | Walkthrough: image → video |
 |:---:|:---:|
 | <a href="assets/demo-text-to-video.mp4"><img src="assets/demo-text-to-video-poster.jpg" alt="Demo: text to video in LTX Video Studio" width="100%"></a> | <a href="assets/demo-image-to-video.mp4"><img src="assets/demo-image-to-video-poster.jpg" alt="Demo: image to video in LTX Video Studio" width="100%"></a> |
 | **[▶ Watch (1:02)](assets/demo-text-to-video.mp4)** | **[▶ Watch (1:06)](assets/demo-image-to-video.mp4)** |
@@ -176,13 +181,19 @@ up in Grafana.
 | Memory | 121 GiB unified (CPU + GPU share one pool) | A job needs **~23 GiB** for the LTX process, **~29 GiB** system-wide at peak |
 | Driver / CUDA | 580.173 (CUDA 13.0) | PyTorch's cu132 wheels run on it via minor-version compatibility |
 | OS | Ubuntu 24.04 (aarch64), DGX OS | |
-| Python | 3.13 (uv-managed) | System Python lacks headers needed by Triton and the kernel build |
-| Disk | ~45 GiB weights + ~7 GiB env | |
+| Python | 3.13 (uv-managed) for the model; system `python3` (3.10+) for the studio and exporter | System Python lacks headers needed by Triton and the kernel build, so the model env is uv's |
+| Tools | `git`, `curl`, [`uv`](https://docs.astral.sh/uv/) | `install.sh` installs uv if missing; step 0 below installs it first so you can log in to Hugging Face |
+| Disk | **≥ 80 GiB free** | ~45 GiB weights + ~7 GiB env, plus room for videos, Docker images and 30 days of metrics |
 | Network | Hugging Face account | `Lightricks/LTX-2.5` is gated with **auto-approval**: click *Agree* once |
+| Monitoring (optional) | Docker + Compose plugin + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) | Preinstalled on DGX OS. Your user must be in the `docker` group. |
+| Remote access (optional) | [Tailscale](https://tailscale.com/download) | Only for `setup-services.sh --tailnet` |
 
 ## Quick Start
 
 ```bash
+# 0. Install uv (Python package manager) if you don't have it
+command -v uv || { curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH="$HOME/.local/bin:$PATH"; }
+
 # 1. Accept the model terms (instant): https://huggingface.co/Lightricks/LTX-2.5
 # 2. Log in to Hugging Face (opens a device-code flow; works over SSH)
 uvx --from 'huggingface_hub>=2.1' hf auth login
@@ -195,16 +206,25 @@ cd LTX-2.5_Video_DGX_Spark_Setup
 ./run.sh "A red fox trots through fresh snow in a quiet birch forest at golden hour, soft breath vapor, gentle wind sound, cinematic tracking shot" \
          outputs/fox.mp4 --height 512 --width 768 --num-frames 97
 
-# 5. Or animate a photo (output size follows the photo's aspect ratio)
+# 5. Or animate a photo of your own (output size follows the photo's aspect ratio)
 ./i2v.sh photo.jpg "She turns toward the camera and smiles as wind lifts her hair, soft city ambience" outputs/smile.mp4
+
+# 6. Web studio (http://127.0.0.1:8090) + metrics exporter, as services that survive logout and reboot
+./setup-services.sh            # add --tailnet to also publish the studio to your tailnet over HTTPS
+
+# 7. Grafana dashboard (Docker): asks you to choose a Grafana user and password, then starts
+#    Prometheus + Grafana with the LTX dashboard pre-loaded at http://localhost:3001/d/ltx-video
+monitoring/stack/setup.sh
 ```
 
-Optional extras:
+**Check it worked**
 
-```bash
-./setup-services.sh            # web UI on 127.0.0.1:8090 + Prometheus exporter on :9092
-./setup-services.sh --tailnet  # ...and publish the UI to your tailnet over HTTPS
-```
+| After step | Check | Expect |
+|---|---|---|
+| 3 | `LTX-2/.venv/bin/python -c "from ltx_kernels.nvfp4 import functional as f; print(f.unavailable_reason())"` | `None` (install.sh prints `NVFP4 kernels: OK`) |
+| 4 | `ls -lh outputs/fox.mp4` | A ~1–3 MB MP4 with sound |
+| 6 | `systemctl --user status ltx-webui ltx-exporter` · `curl -s 127.0.0.1:9092/metrics \| head` | Both `active (running)`; metrics starting `ltx_` |
+| 7 | Open `http://localhost:9090/targets` (Prometheus) | `ltx`, `node` and `dcgm-exporter` all **UP** |
 
 > **Prompting tip:** LTX generates sound too, so describe it. Subject, action, setting, lighting,
 > camera movement *and* audio ("soft wind", "rain patter", "seagulls calling") give the best results.
@@ -406,6 +426,10 @@ system-wide), so **three fit** when nothing else holds the memory: measured with
   | `LTX_WORKERS` | `1` | Jobs rendered at once |
   | `LTX_MIN_FREE_GIB` | `50` | Free memory required to start a job (~29 GiB peak + ~20 GiB no-swap margin) |
   | `LTX_JOB_PEAK_GIB` | `27` | Per-job GPU memory peak (as `nvidia-smi` reports it) reserved for a running job that hasn't fully loaded yet |
+  | `LLM_CONTAINER` | *(empty)* | Docker container name of an LLM server sharing the box; when set, a low-memory refusal says whether it's running |
+
+  Set them when installing (`LTX_WORKERS=2 ./setup-services.sh`) or edit `~/.config/systemd/user/ltx-webui.service`,
+  then `systemctl --user daemon-reload && systemctl --user restart ltx-webui`.
 
 ### Publishing to your tailnet
 
@@ -417,7 +441,9 @@ It binds to `127.0.0.1` only. `setup-services.sh --tailnet` publishes it at:
 | `http://<host>:8090` | `tailscale serve --http 8090` (MagicDNS short name) |
 | `http://<tailscale-ip>:8091` | Direct listener for clients without MagicDNS (serve routes by hostname, so a bare IP returns 404 there) |
 
-All three are reachable from the tailnet only.
+All three are reachable from the tailnet only, and the studio has no login of its own: **anyone on your
+tailnet can queue GPU jobs**. Requests are attributed by their Tailscale identity. To limit who can reach it,
+use [Tailscale access controls](https://tailscale.com/kb/1018/acls) on this machine's ports 443, 8090 and 8091.
 
 ## Monitoring with Grafana
 
@@ -425,7 +451,43 @@ All three are reachable from the tailnet only.
 <img src="assets/grafana.png" alt="LTX-2.5 Grafana dashboard" width="100%">
 </div>
 
-`ltx_job.py` wraps every pipeline run. Once a second it rewrites `logs/current.json` (stage, step,
+### Set it up
+
+```bash
+./setup-services.sh          # the LTX exporter (:9092), if you haven't already
+monitoring/stack/setup.sh    # Prometheus + Grafana + node/GPU exporters in Docker
+```
+
+On first run `setup.sh` asks you to **choose a Grafana admin user and password**. They're stored only in
+`monitoring/stack/.env` (mode 600, git-ignored); nothing in this repo contains a password. It then starts
+the stack with the LTX dashboard pre-loaded at `http://localhost:3001/d/ltx-video`.
+
+| Command | Does |
+|---|---|
+| `monitoring/stack/setup.sh` | First run: choose the login, then start. Later runs: start/update the stack. |
+| `GRAFANA_ADMIN_PASSWORD=… monitoring/stack/setup.sh` | Same, non-interactive (scripts, CI) |
+| `monitoring/stack/setup.sh --password` | Change the Grafana admin password (also updates `.env`) |
+| `monitoring/stack/setup.sh --down` | Stop the stack; metrics and dashboards stay in Docker volumes |
+
+Grafana and Prometheus listen on `127.0.0.1` only. To open Grafana from other machines, set
+`GRAFANA_BIND=0.0.0.0` in `monitoring/stack/.env` and rerun `setup.sh`. Ports, retention and the user name
+are in [`monitoring/stack/.env.example`](monitoring/stack/.env.example). Grafana uses port 3001, not 3000,
+so it doesn't clash with a Grafana you may already run.
+
+**Already run Prometheus and Grafana?** Skip the stack. Append
+[`monitoring/prometheus-scrape.yml`](monitoring/prometheus-scrape.yml) to your `scrape_configs`, add a
+Prometheus datasource with uid `prometheus`, and import `monitoring/grafana-dashboard.json`. The memory and
+GPU panels also need [node-exporter](https://github.com/prometheus/node_exporter) and
+[dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter).
+
+> **Exposure:** the LTX exporter (:9092) and node-exporter (:9100) listen on all interfaces so Prometheus in
+> Docker can reach them, and the LTX metrics include requester logins. On a shared network, block those ports
+> from the LAN (e.g. `sudo ufw deny in on <lan-interface> to any port 9092,9100 proto tcp`) or bind the LTX
+> exporter to the Docker bridge only: `EXPORTER_HOST=172.17.0.1 ./setup-services.sh`.
+
+### How it works
+
+`ltx_job.py` wraps every pipeline run. Once a second it rewrites `logs/running/<job>.json` (stage, step,
 GPU memory from `nvidia-smi`), and when the run ends it appends a record to `logs/jobs.jsonl`.
 `monitoring/ltx_exporter.py` turns both into Prometheus metrics:
 
@@ -440,15 +502,16 @@ GPU memory from `nvidia-smi`), and when the run ends it appends a record to `log
 | `ltx_video_seconds_generated_total` | Seconds of video produced |
 | `ltx_webui_up`, `ltx_webui_queue_jobs{state}`, `ltx_webui_rejected_low_memory` | Web UI health and queue |
 
-The dashboard (`monitoring/grafana-dashboard.json`, 32 panels) combines these with
+The dashboard (`monitoring/grafana-dashboard.json`, 33 panels) combines these with
 `dcgm-exporter` (GPU utilization, power, temperature) and `node-exporter` (unified memory).
-Regenerate it with `python3 monitoring/make_dashboard.py [out.json]`, and add
-[`monitoring/prometheus-scrape.yml`](monitoring/prometheus-scrape.yml) to your Prometheus config.
+Regenerate it with `python3 monitoring/make_dashboard.py [out.json]`. Its *LLM server* tile stays
+"Stopped" unless you run a vLLM server and uncomment the `vllm` job in
+[`monitoring/stack/prometheus.yml`](monitoring/stack/prometheus.yml) (`LLM_PORT=… make_dashboard.py` sets its port).
 
 ## Sharing the Box with an LLM
 
-This Spark also serves an LLM ([Ornith-1.5-35B-A3B](https://github.com/Hitheshkaranth/Ornith-1.5_A3B_Model_DGX_Spark_Setup)
-on vLLM). vLLM reserves memory up front, so the two only fit together if you shrink the LLM's reservation:
+If the Spark also serves an LLM (measured here with a 35B-A3B MoE model on vLLM), plan the memory: vLLM reserves
+memory up front, so the two only fit together if you shrink the LLM's reservation:
 
 | | vLLM at `--gpu-memory-utilization 0.70` | vLLM at `0.45` |
 |---|---|---|
@@ -522,8 +585,7 @@ rm -f logs/webui_pause
 ```
 
 <!-- PARALLEL_RESULTS -->
-*The first full run is in progress on the live, shared box; the results table and chart land here when
-it completes.*
+*No results published yet. Running the commands above writes `benchmarks/parallel_results.json` and a chart.*
 <!-- /PARALLEL_RESULTS -->
 
 ## Repository Layout
@@ -547,10 +609,14 @@ it completes.*
 │   ├── ltx_exporter.py        # Prometheus exporter (:9092)
 │   ├── make_dashboard.py      # generates the Grafana dashboard JSON
 │   ├── grafana-dashboard.json
-│   └── prometheus-scrape.yml
+│   ├── prometheus-scrape.yml  # scrape job, if you bring your own Prometheus
+│   └── stack/                 # one-command Prometheus + Grafana + node/GPU exporters (Docker)
+│       ├── setup.sh           # asks for your Grafana login, writes .env, starts the stack
+│       ├── compose.yaml · prometheus.yml · .env.example
+│       └── grafana/provisioning/  # datasource + dashboard auto-loading
 ├── benchmarks/
 │   ├── bench.py · make_charts.py · results.json · generation_benchmark.png        # size/length sweep
-│   ├── parallel_bench.py · make_parallel_chart.py · parallel_results.json             # 1 vs 2 vs 3 jobs at once
+│   ├── parallel_bench.py · make_parallel_chart.py                                  # 1 vs 2 vs 3 jobs at once
 └── assets/                    # banner, sample GIFs, screenshots, demo videos
 ```
 
@@ -561,6 +627,14 @@ Created at runtime and git-ignored: `LTX-2/` (patched upstream), `models/`, `out
 
 | Symptom | Fix |
 |---|---|
+| `uvx: command not found` | Install uv first (Quick Start step 0), then open a new shell or `export PATH="$HOME/.local/bin:$PATH"` |
+| Studio/exporter stop when you log out of SSH | User services need lingering: `loginctl enable-linger $USER` (`setup-services.sh` now does this) |
+| Grafana panels say *No data* | Check `http://localhost:9090/targets`. `ltx` down: `systemctl --user status ltx-exporter` (run `./setup-services.sh`). All down: `monitoring/stack/setup.sh` again. |
+| Prometheus didn't come back after a reboot | `cd monitoring/stack && docker compose --env-file .env up -d` |
+| `dcgm-exporter` keeps restarting | The NVIDIA Container Toolkit isn't configured for Docker: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker` |
+| `permission denied ... /var/run/docker.sock` | `sudo usermod -aG docker $USER`, then log out and back in |
+| Forgot the Grafana password | `monitoring/stack/setup.sh --password` |
+| `docker compose`: *Set GRAFANA_ADMIN_PASSWORD in monitoring/stack/.env* | You ran `docker compose` directly before choosing a login; run `monitoring/stack/setup.sh` instead |
 | `401` / `403` downloading weights | Click *Agree* on [the model page](https://huggingface.co/Lightricks/LTX-2.5), then `hf auth login`. The device-code flow works on a headless box. |
 | `nvfp4 unavailable: ... rebuild` | The kernels weren't built for your GPU. Re-run `install.sh`, or `cd LTX-2 && TORCH_CUDA_ARCH_LIST=12.1 uv sync --extra natten --group dev --group kernels` |
 | `--distilled-checkpoint-path` errors with the split files | Use `--transformer-path` (as `run.sh` does); the NVFP4 file is the split layout |

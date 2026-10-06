@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Text-to-video with LTX-2.5 distilled (NVFP4 prequant transformer) on GB10.
 # Usage: ./run.sh "prompt" [out.mp4] [extra pipeline args, e.g. --height 512 --width 768 --num-frames 49]
-# Unified memory: Ornith (:8004) holds ~87 GiB; stop it first or this will swap/OOM.
+# Unified memory: a job peaks at ~29 GiB system-wide. If an LLM server holds most of the memory, stop it first or this will swap.
 set -euo pipefail
 cd "$(dirname "$0")"
 M=models/ltx-2.5

@@ -14,6 +14,9 @@ from pathlib import Path
 
 LTX_LOGS = Path(os.environ.get("LTX_LOGS", Path(__file__).resolve().parent.parent / "logs"))
 LISTEN_PORT = int(os.environ.get("EXPORTER_PORT", "9092"))
+# 0.0.0.0 so Prometheus in Docker can reach it via host.docker.internal. Metrics include requester
+# logins: firewall :9092 from your LAN, or bind to the Docker bridge IP (e.g. 172.17.0.1).
+LISTEN_HOST = os.environ.get("EXPORTER_HOST", "0.0.0.0")
 STAGES = ["starting", "text_encoder", "denoise_stage1", "upsample", "denoise_stage2", "decode"]
 
 
@@ -160,5 +163,5 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = http.server.ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), Handler)
+    server = http.server.ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     server.serve_forever()

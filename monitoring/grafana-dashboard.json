@@ -366,8 +366,8 @@
     },
     {
       "type": "stat",
-      "title": "Ornith LLM (:8004)",
-      "description": "Shares the 121 GiB unified pool with LTX. Both at once will not fit.",
+      "title": "LLM server (:8004)",
+      "description": "Optional vLLM server sharing the unified memory pool with LTX (needs the vllm scrape job).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1604,7 +1604,7 @@
     {
       "type": "stat",
       "title": "Refused: low memory",
-      "description": "Web requests refused because Ornith (or something else) held the memory.",
+      "description": "Web requests refused because something else (often an LLM server) held the memory.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

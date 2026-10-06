@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: LTX
+    orgId: 1
+    folder: LTX
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

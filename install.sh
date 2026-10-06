@@ -43,8 +43,11 @@ fi
 if git -C LTX-2 apply --check ../patches/ltx-kernels-sm121a.patch 2>/dev/null; then
   git -C LTX-2 apply ../patches/ltx-kernels-sm121a.patch
   echo "    Applied sm_121a NVFP4 patch."
-else
+elif git -C LTX-2 apply --reverse --check ../patches/ltx-kernels-sm121a.patch 2>/dev/null; then
   echo "    sm_121a patch already applied."
+else
+  echo "sm_121a patch doesn't apply to LTX-2 (local edits?). Reset with: git -C LTX-2 checkout -- packages/ltx-kernels/setup.py" >&2
+  exit 1
 fi
 [ -f LTX-2/uv.lock ] || cp patches/uv.lock LTX-2/uv.lock
 
@@ -61,5 +64,6 @@ cat <<EOF
 Done. Generate a test clip (needs ~30 GiB free unified memory):
   cd $ROOT && ./run.sh "A red fox trots through fresh snow at golden hour" outputs/fox.mp4 --height 512 --width 768 --num-frames 49
 
-Optional web UI + Grafana metrics:   ./setup-services.sh
+Optional web UI + metrics exporter:  ./setup-services.sh
+Optional Grafana dashboard:          monitoring/stack/setup.sh   (Docker; asks you to choose a login)
 EOF
